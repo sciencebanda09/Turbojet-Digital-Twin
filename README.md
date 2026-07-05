@@ -87,7 +87,7 @@ flowchart TB
         R[CLI · pipeline.py] --> M
         R --> N
         R --> V[Validation Suite<br/>· 4 model kinds<br/>· 2 split strategies]
-        R --> W[Benchmark Suite<br/>· latency (p50/p95/p99)<br/>· throughput · memory]
+        R --> W["Benchmark Suite<br/>· latency (p50/p95/p99)<br/>· throughput · memory"]
     end
 
     style CORE fill:#1a1a2e,stroke:#e94560,color:#fff
