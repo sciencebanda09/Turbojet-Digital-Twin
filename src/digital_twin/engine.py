@@ -12,8 +12,8 @@ from src.faults.injection import FaultInjector
 from src.health.overall import overall_health
 from src.maintenance.recommendation import recommend
 from src.physics.cycle_model import BraytonCycle, CycleInput
-from src.prediction.failure_probability import failure_probability
-from src.prediction.rul import estimate_rul
+from src.prediction.failure_probability import FailureProbabilityCalibrator, failure_probability
+from src.prediction.rul import RULConfig, estimate_rul
 from src.surrogate.model import SurrogateModel
 
 _HEALTH_TARGETS = ["CompressorHealth", "CombustorHealth", "TurbineHealth", "OverallHealth"]
@@ -22,17 +22,24 @@ _HEALTH_TARGETS = ["CompressorHealth", "CombustorHealth", "TurbineHealth", "Over
 class DigitalTwin:
     """Stateful fusion of physics, sensor data, and learned surrogate predictions."""
 
-    def __init__(self, engine_id: str = "engine-1") -> None:
+    def __init__(self, engine_id: str = "engine-1", estimator_method: str = "ekf") -> None:
         self.engine_id = engine_id
+        self.estimator_method = estimator_method
         self.physics = BraytonCycle()
-        self.estimator = StateEstimator()
+        self.estimator = StateEstimator(method=estimator_method)
         self.model: SurrogateModel | None = None
         self.history: list[dict[str, Any]] = []
         self.fault_injector: FaultInjector = FaultInjector()
+        self.failure_calibrator: FailureProbabilityCalibrator | None = None
+
+    def set_failure_calibrator(self, calibrator: FailureProbabilityCalibrator) -> "DigitalTwin":
+        """Attach a data-calibrated failure risk model."""
+        self.failure_calibrator = calibrator
+        return self
 
     def initialize(self) -> "DigitalTwin":
         """Reset temporal state while retaining a loaded model."""
-        self.estimator = StateEstimator()
+        self.estimator = StateEstimator(method=self.estimator_method)
         self.history.clear()
         return self
 
@@ -153,6 +160,7 @@ class DigitalTwin:
             rul = estimate_rul(
                 np.array([x["Cycle"] for x in self.history]),
                 np.array([x["OverallHealth"] for x in self.history]),
+                RULConfig(failure_threshold=0.3, warning_threshold=0.7),
             )
             remaining = rul.remaining_cycles
             rul_lower, rul_upper = rul.q10, rul.q90
@@ -161,9 +169,9 @@ class DigitalTwin:
             remaining = 1_000.0
             rul_lower = rul_upper = remaining
             degradation_rate = 0.0
-        probability = failure_probability(health["OverallHealth"], remaining)
-        probability_lower = failure_probability(float(upper["OverallHealth"]), rul_upper)
-        probability_upper = failure_probability(float(lower["OverallHealth"]), rul_lower)
+        probability = failure_probability(health["OverallHealth"], remaining, calibrator=self.failure_calibrator)
+        probability_lower = failure_probability(float(upper["OverallHealth"]), rul_upper, calibrator=self.failure_calibrator)
+        probability_upper = failure_probability(float(lower["OverallHealth"]), rul_lower, calibrator=self.failure_calibrator)
         probability_lower, probability_upper = sorted((probability_lower, probability_upper))
         decision = recommend(
             health["OverallHealth"],
@@ -195,6 +203,13 @@ class DigitalTwin:
             "RiskLevel": decision.risk_level,
         }
 
+    def calibrate_failure_model(self, horizon: int = 25, threshold: float = 0.7) -> "DigitalTwin":
+        """Fit the failure probability model from accumulated health history."""
+        if len(self.history) >= 10:
+            health_trace = [x["OverallHealth"] for x in self.history]
+            self.failure_calibrator = FailureProbabilityCalibrator().fit(health_trace, horizon, threshold)
+        return self
+
     def batch_predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         """Run ordered stateful inference over a frame, batching model calls."""
         precomputed_rows = None
@@ -217,6 +232,7 @@ class DigitalTwin:
         for i, (_, row) in enumerate(frame.iterrows()):
             pre = precomputed_rows[i] if precomputed_rows is not None else None
             results.append(self.update(row.to_dict(), pre))
+        self.calibrate_failure_model()
         return pd.DataFrame(results)
 
     def stream_predict(self, observations: Iterable[dict[str, float]]) -> Iterator[dict[str, Any]]:

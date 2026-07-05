@@ -1,5 +1,4 @@
 model:
-  kind: extra_trees
+  kind: stacking
   n_estimators: 300
-  max_depth: null
   scale_targets: true

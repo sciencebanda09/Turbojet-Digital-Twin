@@ -15,6 +15,7 @@ class UnscentedKalmanFilter:
         state: Vector,
         covariance: Vector,
         process_noise: Vector,
+        measurement_noise: Vector | None = None,
         alpha: float = 1e-2,
         beta: float = 2.0,
         kappa: float = 0.0,
@@ -22,6 +23,10 @@ class UnscentedKalmanFilter:
         self.state = np.asarray(state, dtype=float)
         self.covariance = np.asarray(covariance, dtype=float)
         self.process_noise = np.asarray(process_noise, dtype=float)
+        self.measurement_noise = (
+            np.asarray(measurement_noise) if measurement_noise is not None
+            else np.eye(state.size) * 0.01
+        )
         self.alpha, self.beta, self.kappa = alpha, beta, kappa
 
     def _points(self) -> tuple[Vector, Vector, Vector]:
@@ -48,7 +53,7 @@ class UnscentedKalmanFilter:
         self,
         measurement: Vector,
         observation: Callable[[Vector], Vector],
-        measurement_noise: Vector,
+        measurement_noise: Vector | None = None,
     ) -> Vector:
         """Assimilate a nonlinear observation."""
         points, wm, wc = self._points()
@@ -56,7 +61,8 @@ class UnscentedKalmanFilter:
         expected = wm @ observed
         dy = observed - expected
         dx = points - self.state
-        innovation_cov = (dy.T * wc) @ dy + measurement_noise
+        noise = np.asarray(measurement_noise) if measurement_noise is not None else self.measurement_noise
+        innovation_cov = (dy.T * wc) @ dy + noise
         cross = (dx.T * wc) @ dy
         gain = np.linalg.solve(innovation_cov, cross.T).T
         self.state += gain @ (np.asarray(measurement) - expected)

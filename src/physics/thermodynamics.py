@@ -1,6 +1,7 @@
 """Reusable ideal-gas thermodynamic relations."""
 
 import math
+from .constants import GAS_CONSTANT_AIR, GAMMA_AIR, isa_pressure, isa_temperature
 
 
 def total_temperature(static_temperature: float, mach: float, gamma: float = 1.4) -> float:
@@ -13,8 +14,13 @@ def total_pressure(static_pressure: float, mach: float, gamma: float = 1.4) -> f
     return static_pressure * (1 + 0.5 * (gamma - 1) * mach**2) ** (gamma / (gamma - 1))
 
 
-def speed_of_sound(temperature: float, gamma: float = 1.4, gas_constant: float = 287.05) -> float:
+def speed_of_sound(temperature: float, gamma: float = 1.4, gas_constant: float = GAS_CONSTANT_AIR) -> float:
     """Return ideal-gas speed of sound in m/s."""
     if temperature <= 0:
         raise ValueError("temperature must be positive")
     return math.sqrt(gamma * gas_constant * temperature)
+
+
+def standard_atmosphere(altitude_m: float) -> tuple[float, float]:
+    """Return (temperature_K, pressure_Pa) for the ISA at a given altitude."""
+    return isa_temperature(altitude_m), isa_pressure(altitude_m)

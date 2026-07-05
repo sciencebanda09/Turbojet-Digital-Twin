@@ -22,7 +22,7 @@ import numpy as np
 from src.health.overall import overall_health
 from src.physics.cycle_model import BraytonCycle, CycleInput
 from src.prediction.failure_probability import failure_probability
-from src.prediction.rul import estimate_rul
+from src.prediction.rul import RULConfig, estimate_rul
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,8 @@ class ScenarioSimulator:
         # cycle 1, matching estimate_rul's linear-trend contract without
         # requiring twin history.
         rul = estimate_rul(
-            np.array([0.0, 1.0]), np.array([1.0, health]), threshold=self.degradation_threshold
+            np.array([0.0, 1.0]), np.array([1.0, health]),
+            RULConfig(failure_threshold=self.degradation_threshold),
         )
         remaining_cycles = min(rul.remaining_cycles, self.max_rul_cycles)
         probability = failure_probability(health, remaining_cycles)

@@ -1,22 +1,23 @@
-"""Surrogate construction and training."""
+"""Surrogate construction with per-target models, target scaling, and stacking."""
 
 from sklearn.ensemble import (
     ExtraTreesRegressor,
     GradientBoostingRegressor,
+    HistGradientBoostingRegressor,
     RandomForestRegressor,
+    StackingRegressor,
     VotingRegressor,
 )
+from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from src.dataset.features import RESIDUAL_COLUMNS
 from src.dataset.loader import FEATURES, TARGETS
 from src.dataset.preprocess import build_preprocessor
 from .model import SurrogateModel
 
-# Ratio/delta columns added by engineer_features(), plus physics-residual
-# health columns added by healthy_reference_residuals(). Must match what
-# SurrogateModel._prepare() -> engineer_all_features() actually produces.
 _ENGINEERED_COLUMNS = [
     "CompressorPR",
     "TurbinePR",
@@ -24,76 +25,109 @@ _ENGINEERED_COLUMNS = [
     "TurbineDeltaT",
     "FuelPerRPM",
     "CorrectedRPM",
+    "TempRatioComp",
+    "TempRatioTurb",
+    "OverallPR",
+    "BurnerTempRise",
+    "FlowSquared",
+    "RPMSquared",
+    "FuelFlowRPM",
+    "CorrectedFuelFlow",
     *RESIDUAL_COLUMNS,
 ]
 PIPELINE_FEATURES = FEATURES + _ENGINEERED_COLUMNS
 
+_HEALTH_TARGETS = ["CompressorHealth", "CombustorHealth", "TurbineHealth", "OverallHealth"]
+_PERF_TARGETS = ["Thrust", "TSFC"]
 
-def create_model(
-    kind: str = "extra_trees", seed: int = 42, n_estimators: int = 200
-) -> SurrogateModel:
-    """Construct a reproducible multi-output surrogate."""
-    gradient_boosting = MultiOutputRegressor(
-        GradientBoostingRegressor(n_estimators=n_estimators, random_state=seed)
-    )
-    estimators = {
-        "extra_trees": ExtraTreesRegressor(
+
+def _base_estimator(kind: str, seed: int, n_estimators: int):
+    """Return a single-output estimator for the given kind."""
+    if kind == "extra_trees":
+        return ExtraTreesRegressor(
             n_estimators=n_estimators, random_state=seed, n_jobs=-1, min_samples_leaf=2
-        ),
-        "random_forest": RandomForestRegressor(
+        )
+    if kind == "random_forest":
+        return RandomForestRegressor(
             n_estimators=n_estimators, random_state=seed, n_jobs=-1, min_samples_leaf=2
-        ),
-        "gradient_boosting": gradient_boosting,
-        "ensemble": MultiOutputRegressor(
-            VotingRegressor(
-                [
-                    (
-                        "extra_trees",
-                        ExtraTreesRegressor(
-                            n_estimators=n_estimators,
-                            random_state=seed,
-                            n_jobs=-1,
-                            min_samples_leaf=2,
-                        ),
-                    ),
-                    (
-                        "random_forest",
-                        RandomForestRegressor(
-                            n_estimators=n_estimators,
-                            random_state=seed,
-                            n_jobs=-1,
-                            min_samples_leaf=2,
-                        ),
-                    ),
-                    (
-                        "gradient_boosting",
-                        GradientBoostingRegressor(n_estimators=n_estimators, random_state=seed),
-                    ),
-                ]
-            )
-        ),
-        "mlp": MLPRegressor(
-            hidden_layer_sizes=(128, 64), max_iter=500, random_state=seed, early_stopping=True
-        ),
-    }
+        )
+    if kind == "gradient_boosting":
+        return GradientBoostingRegressor(n_estimators=n_estimators, max_depth=5, random_state=seed)
+    if kind == "hist_gradient_boosting":
+        return HistGradientBoostingRegressor(
+            max_iter=n_estimators, max_depth=6, random_state=seed, early_stopping=False
+        )
     if kind == "xgboost":
         try:
             from xgboost import XGBRegressor
         except ImportError as error:
             raise RuntimeError("Install xgboost to use model kind 'xgboost'") from error
-        estimators[kind] = MultiOutputRegressor(
-            XGBRegressor(
-                n_estimators=n_estimators,
-                max_depth=6,
-                random_state=seed,
-                objective="reg:squarederror",
+        return XGBRegressor(
+            n_estimators=n_estimators, max_depth=6, random_state=seed, objective="reg:squarederror"
+        )
+    raise ValueError(f"Unsupported model kind: {kind}")
+
+
+def _base_estimators(seed: int, n_estimators: int) -> list[tuple[str, object]]:
+    """Standard set of base estimators for stacking."""
+    return [
+        ("et", ExtraTreesRegressor(n_estimators=n_estimators, random_state=seed, n_jobs=-1)),
+        ("rf", RandomForestRegressor(n_estimators=n_estimators, random_state=seed, n_jobs=-1)),
+        ("gb", GradientBoostingRegressor(n_estimators=n_estimators, random_state=seed)),
+    ]
+
+
+def create_model(
+    kind: str = "extra_trees",
+    seed: int = 42,
+    n_estimators: int = 300,
+    scale_targets: bool = True,
+) -> SurrogateModel:
+    """Construct a reproducible multi-output surrogate.
+
+    Parameters
+    ----------
+    kind : str
+        One of ``extra_trees``, ``random_forest``, ``gradient_boosting``,
+        ``hist_gradient_boosting``, ``stacking``, ``xgboost``, ``mlp``.
+    seed : int
+        Random seed for reproducibility.
+    n_estimators : int
+        Number of trees / iterations.
+    scale_targets : bool
+        If True, targets are standardized before fitting.
+    """
+    target_scalers = {}
+    if kind == "stacking":
+        final_estimator = Ridge(alpha=1.0, random_state=seed)
+        base_estimators_list = _base_estimators(seed, n_estimators)
+        estimator = MultiOutputRegressor(
+            StackingRegressor(
+                estimators=base_estimators_list,
+                final_estimator=MultiOutputRegressor(final_estimator),
+                cv=5,
             )
         )
-    if kind not in estimators:
-        raise ValueError(f"Unsupported model kind: {kind}")
+    elif kind == "mlp":
+        estimator = MLPRegressor(
+            hidden_layer_sizes=(128, 64), max_iter=500, random_state=seed, early_stopping=True
+        )
+    elif kind == "ensemble":
+        estimator = MultiOutputRegressor(
+            VotingRegressor(_base_estimators(seed, n_estimators))
+        )
+    elif kind == "xgboost":
+        estimator = MultiOutputRegressor(_base_estimator(kind, seed, n_estimators))
+    else:
+        estimator = MultiOutputRegressor(_base_estimator(kind, seed, n_estimators))
+
+    if scale_targets:
+        for name in TARGETS:
+            target_scalers[name] = StandardScaler()
+
     pipeline = Pipeline(
-        [("preprocess", build_preprocessor(PIPELINE_FEATURES)), ("model", estimators[kind])]
+        [("preprocess", build_preprocessor(PIPELINE_FEATURES)), ("model", estimator)]
     )
-    # SurrogateModel.feature_names stays the raw schema; the pipeline itself
-    # is fit on the wider engineered column set via SurrogateModel._prepare.
-    return SurrogateModel(pipeline, FEATURES, TARGETS, PIPELINE_FEATURES)
+    return SurrogateModel(
+        pipeline, FEATURES, TARGETS, PIPELINE_FEATURES, target_scalers=target_scalers
+    )

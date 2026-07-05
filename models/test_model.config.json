@@ -1,0 +1,5 @@
+{
+  "kind": "extra_trees",
+  "n_estimators": 400,
+  "rmse": 248.32223567016288
+}

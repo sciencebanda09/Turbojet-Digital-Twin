@@ -42,6 +42,14 @@ def engineer_features(frame: pd.DataFrame) -> pd.DataFrame:
     out["TurbineDeltaT"] = out["T4"] - out["T3"]
     out["FuelPerRPM"] = out["FuelFlow"] / out["RPM"].clip(lower=eps)
     out["CorrectedRPM"] = out["RPM"] / np.sqrt((out["T2"] / 288.15).clip(lower=eps))
+    out["TempRatioComp"] = out["T3"] / out["T2"].clip(lower=eps)
+    out["TempRatioTurb"] = out["T4"] / out["T3"].clip(lower=eps)
+    out["OverallPR"] = out["P3"] / out["Pamb"].clip(lower=eps)
+    out["BurnerTempRise"] = out["T3"] - out["T2"]
+    out["FlowSquared"] = out["FuelFlow"] ** 2
+    out["RPMSquared"] = (out["RPM"] / 100_000.0) ** 2
+    out["FuelFlowRPM"] = out["FuelFlow"] * (out["RPM"] / 100_000.0)
+    out["CorrectedFuelFlow"] = out["FuelFlow"] / np.sqrt((out["Tamb"] / 288.15).clip(lower=eps))
     return out
 
 

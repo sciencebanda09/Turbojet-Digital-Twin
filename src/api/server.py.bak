@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from src.digital_twin.engine import DigitalTwin
-from src.explainability.root_cause import analyze_scenario
+from src.explainability.root_cause import analyze_faults, analyze_scenario
 from src.faults.injection import FaultInjector, FaultSpec, FaultType
 from src.maintenance.decision_engine import MaintenanceDecisionEngine
 from src.simulation.what_if import ScenarioAdjustment, ScenarioSimulator
@@ -34,7 +34,6 @@ class Observation(BaseModel):
     T3: float = Field(gt=0)
     P4: float = Field(gt=0)
     T4: float = Field(gt=0)
-    EstimatorMethod: str = "ekf"
 
 
 class ScenarioRequest(BaseModel):
@@ -87,11 +86,7 @@ def service_health() -> dict[str, str]:
 def update_engine(engine_id: str, observation: Observation) -> dict[str, Any]:
     """Assimilate one sensor observation for an engine."""
     try:
-        estimator_method = observation.EstimatorMethod
-        twin = twins.get(engine_id)
-        if twin is None:
-            twin = DigitalTwin(engine_id, estimator_method=estimator_method)
-            twins[engine_id] = twin
+        twin = twins.setdefault(engine_id, DigitalTwin(engine_id))
         default = twins.get("engine-1")
         if twin.model is None and default is not None:
             twin.model = default.model

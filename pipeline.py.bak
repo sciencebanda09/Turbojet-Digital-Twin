@@ -6,13 +6,9 @@ import logging
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from src.dataset.loader import FEATURES, TARGETS, load_dataset
-from src.dataset.split import official_split
+from src.dataset.loader import FEATURES, load_dataset
 from src.digital_twin.engine import DigitalTwin
-from src.report.research import generate_research_report
-from src.research.experiment import ablation_study, run_experiment
 from src.training.evaluate import evaluate_model
-from src.training.hyperparameter_search import select_model
 from src.training.trainer import train_from_csv
 from src.utils.logging import configure_logging
 from src.utils.paths import ensure_directories
@@ -78,27 +74,6 @@ def main() -> None:
     train.add_argument("--data", required=True)
     train.add_argument("--output", default="models/best_model.joblib")
     train.add_argument("--kind", default="extra_trees")
-    train.add_argument("--n-estimators", type=int, default=300)
-    train.add_argument("--strategy", default="official", choices=["official", "grouped"])
-    tune = commands.add_parser("tune")
-    tune.add_argument("--data", required=True)
-    tune.add_argument("--output", default="models/best_model.joblib")
-
-    exp = commands.add_parser("experiment")
-    exp.add_argument("--data", required=True)
-    exp.add_argument("--kind", default="extra_trees")
-    exp.add_argument("--n-estimators", type=int, default=300)
-    exp.add_argument("--split", default="official", choices=["official", "grouped"])
-    exp.add_argument("--output-dir", default="results/experiments")
-    exp.add_argument("--tag", default="")
-
-    ablation = commands.add_parser("ablation")
-    ablation.add_argument("--data", required=True)
-    ablation.add_argument("--output-dir", default="results/experiments")
-
-    report_cmd = commands.add_parser("report")
-    report_cmd.add_argument("--input-dir", default="results/experiments")
-    report_cmd.add_argument("--output", default="results/research_report.md")
     evaluate = commands.add_parser("evaluate")
     evaluate.add_argument("--data", required=True)
     evaluate.add_argument("--model", default="models/best_model.joblib")
@@ -111,51 +86,9 @@ def main() -> None:
     configure_logging()
     ensure_directories()
     if args.command == "train":
-        LOGGER.info(
-            "metrics=%s",
-            json.dumps(
-                train_from_csv(
-                    args.data, args.output, args.kind,
-                    n_estimators=args.n_estimators, strategy=args.strategy,
-                )
-            ),
-        )
-    elif args.command == "tune":
-        frame = load_dataset(args.data)
-        train, test = official_split(frame, seed=42)
-        model, config = select_model(train, test)
-        model.calibrate(test)
-        model.save(args.output)
-        config_path = Path(args.output).with_suffix(".config.json")
-        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-        LOGGER.info("tune complete best_config=%s", json.dumps(config))
+        LOGGER.info("metrics=%s", json.dumps(train_from_csv(args.data, args.output, args.kind)))
     elif args.command == "evaluate":
         LOGGER.info("metrics=%s", json.dumps(evaluate_model(args.model, args.data)))
-    elif args.command == "experiment":
-        result = run_experiment(
-            args.data, kind=args.kind, n_estimators=args.n_estimators,
-            split_strategy=args.split, output_dir=args.output_dir, tag=args.tag,
-        )
-        LOGGER.info("experiment complete id=%s metrics=%s", result.experiment_id, json.dumps(result.metrics))
-
-    elif args.command == "ablation":
-        results = ablation_study(args.data, output_dir=args.output_dir)
-        report_path = Path(args.output_dir) / "ablation_report.md"
-        generate_research_report(
-            [{"experiment_id": r.experiment_id, "config": r.config, "metrics": r.metrics}
-             for r in results],
-            report_path,
-        )
-        LOGGER.info("ablation complete %d experiments, report=%s", len(results), report_path)
-
-    elif args.command == "report":
-        reports_dir = Path(args.input_dir)
-        experiments = []
-        for f in sorted(reports_dir.glob("*_report.json")):
-            experiments.append(json.loads(f.read_text(encoding="utf-8")))
-        generate_research_report(experiments, args.output)
-        LOGGER.info("report generated with %d experiments", len(experiments))
-
     elif args.command == "predict":
         frame = load_dataset(args.data, require_targets=False)
         result = DigitalTwin().load_model(args.model).batch_predict(frame)

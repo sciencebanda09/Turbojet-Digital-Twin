@@ -19,6 +19,7 @@ def train_from_csv(
     kind: str = "extra_trees",
     seed: int = 42,
     strategy: str = "official",
+    n_estimators: int = 300,
 ) -> dict[str, float]:
     """Validate, split, fit, evaluate, and persist a surrogate.
 
@@ -32,7 +33,7 @@ def train_from_csv(
         raise ValueError(f"Unsupported split strategy: {strategy}")
     frame = load_dataset(data_path)
     train, test = _STRATEGIES[strategy](frame, seed=seed)
-    model = create_model(kind, seed=seed).fit(train)
+    model = create_model(kind, seed=seed, n_estimators=n_estimators).fit(train)
     prediction = model.predict(test)
     metrics = regression_metrics(test[TARGETS].to_numpy(), prediction.to_numpy())
     model.calibrate(test)
