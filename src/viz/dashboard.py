@@ -472,8 +472,22 @@ try:
         st.success(f"Top recommendation: **{options[0].action}**")
         st.caption(options[0].rationale)
 
-    else:  # Upload & Inference / Settings
+    else:  # Settings
+        st.subheader("Settings")
+        st.markdown("**Model Configuration**")
+        c1, c2 = st.columns(2)
+        c1.metric("Model", Path(model_path).name if Path(model_path).exists() else "Not loaded")
+        c2.metric("State Estimator", estimator_method.upper())
+
+        st.markdown("**Prediction Output**")
         st.dataframe(output, width="stretch")
+
+        st.markdown("**About**")
+        st.code(f"Engine count: {output['EngineID'].nunique() if 'EngineID' in output else 0}\n"
+                f"Total cycles: {len(output)}\n"
+                f"Cycle range: {output['Cycle'].min():.0f} - {output['Cycle'].max():.0f}\n"
+                f"Features: {len(data.columns)}\n"
+                f"Targets: OverallHealth, CompressorHealth, CombustorHealth, TurbineHealth, Thrust, TSFC")
 
     st.sidebar.download_button("Export CSV", output.to_csv(index=False),
                                 f"twin_predictions_{latest_engine_id}.csv")
