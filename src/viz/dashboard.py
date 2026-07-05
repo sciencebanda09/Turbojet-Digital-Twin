@@ -11,7 +11,6 @@ from src.digital_twin.fleet import rank_fleet
 from src.explainability.root_cause import analyze_scenario
 from src.faults.injection import FaultInjector, FaultSpec, FaultType
 from src.maintenance.decision_engine import MaintenanceDecisionEngine
-from src.metrics.regression import regression_metrics
 from src.simulation.what_if import ScenarioAdjustment, ScenarioSimulator
 from src.viz.engine_animation import engine_schematic
 from src.viz.plots import (
@@ -260,37 +259,83 @@ try:
                      width="stretch", use_container_width=True)
 
     elif page == "Model Explainability":
-        st.subheader("Model Feature Importance")
-        twin_importance = DigitalTwin(estimator_method=estimator_method)
+        st.subheader("Model Explainability (SHAP / Permutation Importance)")
+        twin_exp = DigitalTwin(estimator_method=estimator_method)
         if Path(model_path).exists():
-            twin_importance.load_model(model_path)
-        model = twin_importance.model
+            twin_exp.load_model(model_path)
+        model = twin_exp.model
         if model is None:
             st.warning("No model loaded.")
         else:
-            pipeline = model.pipeline
-            estimator = pipeline.steps[-1][1] if hasattr(pipeline, "steps") else pipeline
+            from src.explainability.shap_explainer import explain_prediction, feature_interaction_matrix
+            try:
+                feature_names = getattr(model, "pipeline_feature_names", model.feature_names)
+                raw_background = output[model.feature_names].dropna().iloc[:200] if len(output) > 200 else output[model.feature_names].dropna()
+                raw_sample = output[model.feature_names].dropna().iloc[:5]
+                background = model._prepare(raw_background)
+                sample = model._prepare(raw_sample)
 
-            def _extract_importance(est):
-                if hasattr(est, "feature_importances_"):
-                    return list(est.feature_importances_)
-                members = getattr(est, "estimators_", None)
-                if not members:
-                    return None
-                nested = [_extract_importance(m) for m in members]
-                nested = [n for n in nested if n is not None]
-                return list(pd.DataFrame(nested).mean(axis=0)) if nested else None
+                def predict_fn(x: pd.DataFrame) -> np.ndarray:
+                    return np.asarray(model.pipeline.predict(x))
 
-            values = _extract_importance(estimator)
-            feature_names = getattr(model, "pipeline_feature_names", model.feature_names)
-            if values is not None and len(values) == len(feature_names):
-                importance_df = pd.DataFrame({
-                    "Feature": feature_names,
-                    "Importance": values,
-                }).sort_values("Importance", ascending=True)
-                st.bar_chart(importance_df.set_index("Feature"), height=500)
-            else:
-                st.info("Model does not expose feature importances.")
+                with st.spinner("Computing SHAP explanations..."):
+                    explanation = explain_prediction(predict_fn, sample, feature_names, background)
+                st.success(f"Method: {explanation['method']}")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Global Feature Importance**")
+                    imp_df = pd.DataFrame(explanation["global_importance"])
+                    if not imp_df.empty:
+                        imp_df = imp_df.sort_values("importance", ascending=True)
+                        st.bar_chart(imp_df.set_index("feature"), height=400)
+                with col2:
+                    st.markdown("**Local Explanations (Row 1)**")
+                    if explanation["local_explanations"]:
+                        local_df = pd.DataFrame(explanation["local_explanations"][0]["factors"])
+                        if not local_df.empty:
+                            local_df = local_df.sort_values("shap_value", ascending=True)
+                            st.bar_chart(local_df.set_index("feature"), height=400)
+
+                st.markdown("**Local Explanation Details**")
+                for local in explanation["local_explanations"]:
+                    with st.expander(f"Row {local['row']}"):
+                        ldf = pd.DataFrame(local["factors"])
+                        st.dataframe(ldf, width="stretch")
+
+                with st.spinner("Computing interaction matrix..."):
+                    interaction = feature_interaction_matrix(predict_fn, background, feature_names, max_features=8)
+                if interaction.get("matrix"):
+                    st.markdown("**Feature Interaction Matrix (SHAP)**")
+                    matrix = np.array(interaction["matrix"])
+                    names = interaction["names"]
+                    fig = {
+                        "data": [
+                            {
+                                "z": matrix.tolist(),
+                                "x": names,
+                                "y": names,
+                                "type": "heatmap",
+                                "colorscale": "Viridis",
+                                "hoverongaps": False,
+                            }
+                        ],
+                        "layout": {
+                            "title": "Mean |SHAP interaction|",
+                            "width": 600,
+                            "height": 600,
+                        },
+                    }
+                    st.plotly_chart(fig, use_container_width=False)
+
+            except Exception as e:
+                st.warning(f"SHAP explanation unavailable: {e}")
+                try:
+                    imp_df = pd.DataFrame(explanation.get("global_importance", []))
+                    if not imp_df.empty:
+                        st.bar_chart(imp_df.set_index("feature"), height=400)
+                except Exception:
+                    pass
 
     elif page == "What-If Simulator":
         st.subheader("Scenario Simulator")
