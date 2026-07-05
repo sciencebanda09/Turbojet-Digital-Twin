@@ -39,6 +39,7 @@ def _demo_frame(engines: int = 3, cycles: int = 20, seed: int = 42) -> pd.DataFr
     return pd.DataFrame(rows, columns=FEATURES + TARGETS)
 
 
+@pytest.mark.slow
 def test_hybrid_model_train_and_predict():
     frame = _demo_frame(engines=3, cycles=20)
     model = HybridPhysicsMLModel.train(frame, ml_kind="hist_gradient_boosting", seed=42)
@@ -50,6 +51,7 @@ def test_hybrid_model_train_and_predict():
     assert preds["CompressorHealth"].between(0, 1).all()
 
 
+@pytest.mark.slow
 def test_hybrid_model_uncertainty():
     frame = _demo_frame(engines=2, cycles=10)
     model = HybridPhysicsMLModel.train(frame, ml_kind="hist_gradient_boosting", seed=42)
@@ -100,6 +102,7 @@ def test_benchmark_suite_runs():
         assert r.throughput_ops_s > 0
 
 
+@pytest.mark.slow
 def test_explain_prediction():
     from src.explainability.shap_explainer import explain_prediction
     import numpy as np

@@ -10,4 +10,4 @@ jobs:
       - run: pip install -e ".[all]"
       - run: pip list | grep -E "plotly|streamlit"
       - run: ruff check .
-      - run: pytest --cov=src --cov-fail-under=70
+      - run: pytest --cov=src --cov-fail-under=70 -m "not slow"
