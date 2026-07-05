@@ -39,6 +39,7 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --disable-warnings"
+markers = ["slow: slow integration/benchmark tests (skip with -m 'not slow')"]
 
 [tool.ruff]
 line-length = 100
