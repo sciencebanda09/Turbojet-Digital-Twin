@@ -42,8 +42,8 @@ def run_validation_suite(
     results: list[ValidationResult] = []
 
     variants = [
-        ("official", ["hist_gradient_boosting", "extra_trees", "stacking"]),
-        ("grouped", ["hist_gradient_boosting", "extra_trees"]),
+        ("official", ["hist_gradient_boosting", "extra_trees", "stacking", "hybrid"]),
+        ("grouped", ["hist_gradient_boosting", "extra_trees", "stacking", "hybrid"]),
     ]
 
     for split_strategy, kinds in variants:

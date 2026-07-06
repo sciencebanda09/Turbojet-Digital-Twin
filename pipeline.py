@@ -90,7 +90,10 @@ def main() -> None:
     exp.add_argument("--data", required=True)
     exp.add_argument("--kind", default="extra_trees")
     exp.add_argument("--n-estimators", type=int, default=300)
-    exp.add_argument("--split", default="official", choices=["official", "grouped"])
+    exp.add_argument("--split", default="grouped", choices=["official", "grouped"],
+                     help="'grouped' holds out entire engines (tests cross-engine generalization; "
+                          "15%% of challenge score). 'official' reproduces train.csv/test.csv split "
+                          "(same engines in both). Report BOTH in your submission.")
     exp.add_argument("--output-dir", default="results/experiments")
     exp.add_argument("--tag", default="")
 
