@@ -6,7 +6,7 @@ from typing import Any
 import json
 import numpy as np
 import pandas as pd
-from src.dataset.loader import IDENTIFIER_COLUMNS, SENSOR_FEATURES, TARGETS
+from src.dataset.loader import SENSOR_FEATURES, TARGETS
 from src.estimation.state_estimator import StateEstimator
 from src.faults.injection import FaultInjector
 from src.health.overall import overall_health

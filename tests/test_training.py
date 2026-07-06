@@ -2,7 +2,7 @@ from pipeline import demo_data
 from src.training.trainer import train_from_csv
 from src.surrogate.model import SurrogateModel
 from src.surrogate.train import create_model
-from src.dataset.loader import SENSOR_FEATURES, IDENTIFIER_COLUMNS
+from src.dataset.loader import SENSOR_FEATURES
 
 
 def test_train_and_load(tmp_path) -> None:
@@ -33,7 +33,6 @@ def test_model_feature_names_are_sensors_only() -> None:
 def test_model_ignores_identifiers_in_pipeline() -> None:
     """SurrogateModel._prepare uses SENSOR_FEATURES (not EngineID/Cycle) for the pipeline."""
     from src.surrogate.train import create_model
-    from src.dataset.features import engineer_all_features
     frame = demo_data(3, 10)
     model = create_model("extra_trees")
     prepared = model._prepare(frame)

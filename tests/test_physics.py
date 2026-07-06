@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 from src.physics.cycle_model import BraytonCycle, CycleInput
 from src.physics.component_maps import compressor_pressure_ratio
