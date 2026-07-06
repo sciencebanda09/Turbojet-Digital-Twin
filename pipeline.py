@@ -4,9 +4,8 @@ import argparse
 import json
 import logging
 from pathlib import Path
-import numpy as np
 import pandas as pd
-from src.dataset.loader import FEATURES, TARGETS, load_dataset
+from src.dataset.loader import load_dataset, sample_real_dataset
 from src.dataset.split import official_split
 from src.digital_twin.engine import DigitalTwin
 from src.report.research import generate_research_report
@@ -22,53 +21,28 @@ from src.utils.paths import ensure_directories
 LOGGER = logging.getLogger(__name__)
 
 
-def demo_data(engines: int = 5, cycles: int = 60, seed: int = 42) -> pd.DataFrame:
-    """Generate a physically plausible deterministic dataset for smoke testing."""
-    rng = np.random.default_rng(seed)
-    rows = []
-    for engine in range(1, engines + 1):
-        rate = rng.uniform(0.0015, 0.004)
-        for cycle in range(1, cycles + 1):
-            altitude = rng.uniform(0, 10_000)
-            mach = rng.uniform(0.1, 0.9)
-            tamb = 288.15 - 0.0065 * altitude
-            pamb = 101325 * (tamb / 288.15) ** 5.256
-            rpm = rng.uniform(70_000, 98_000)
-            fuel = rng.uniform(0.5, 1.2)
-            health = np.clip(1 - rate * cycle + rng.normal(0, 0.004), 0.2, 1)
-            p2 = pamb * (1 + 0.2 * mach**2) ** 3.5
-            t2 = tamb * (1 + 0.2 * mach**2)
-            p3 = p2 * (1 + 10 * (rpm / 100000) ** 2) * health
-            t3 = t2 * (p3 / p2) ** (0.286 / max(0.7 * health, 0.4))
-            t4 = min(1750, t3 + fuel * 43000000 / (26 * 1150)) - 250
-            p4 = max(pamb * 1.05, p3 * 0.3)
-            thrust = max(500, 20000 * health * (rpm / 100000) - altitude * 0.3)
-            rows.append(
-                [
-                    engine,
-                    cycle,
-                    altitude,
-                    mach,
-                    tamb,
-                    pamb,
-                    rpm,
-                    fuel,
-                    p2,
-                    t2,
-                    p3,
-                    t3,
-                    p4,
-                    t4,
-                    health * 0.99,
-                    health * 0.995,
-                    health * 0.98,
-                    health * 0.987,
-                    thrust,
-                    fuel / thrust,
-                ]
-            )
+def demo_data(engines: int | None = 5, cycles: int | None = 30, seed: int = 42) -> pd.DataFrame:
+    """Return a deterministic slice of the REAL official dataset for smoke testing.
 
-    return pd.DataFrame(rows, columns=FEATURES + TARGETS)
+    Previously this fabricated synthetic engine telemetry with hand-invented
+    formulas (e.g. an ad-hoc Thrust equation unrelated to either the real
+    dataset or BraytonCycle's actual physics). That generator silently
+    diverged from real data over time -- see AUDIT_REPORT.md's Bug 6
+    follow-up, where the physics model's dataset-calibrated thrust
+    coefficients legitimately failed to fit the old synthetic generator's
+    differently-scaled Thrust values. This now returns a real slice of
+    ``data/turbojet_complete_dataset.csv`` instead, so "demo" data and
+    "real" data are the same ground truth, not two independently-invented
+    approximations of it.
+
+    ``engines``/``cycles`` are capped at what's actually available (10
+    engines x 30 cycles in the shipped dataset); requesting more just
+    returns everything available rather than erroring, to keep old call
+    sites working unchanged.
+    """
+    n_engines = None if engines is None else min(engines, 10)
+    n_cycles = None if cycles is None else min(cycles, 30)
+    return sample_real_dataset(n_engines=n_engines, n_cycles=n_cycles, seed=seed)
 
 
 def main() -> None:
