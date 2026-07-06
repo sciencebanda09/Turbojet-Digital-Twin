@@ -50,6 +50,21 @@ class HybridPhysicsMLModel:
         self.ml_model = ml_model
         self.physics = physics or BraytonCycle()
 
+    @property
+    def feature_names(self) -> list[str]:
+        return self.ml_model.feature_names
+
+    @property
+    def pipeline_feature_names(self) -> list[str]:
+        return self.ml_model.pipeline_feature_names
+
+    @property
+    def pipeline(self) -> "Pipeline":
+        return self.ml_model.pipeline
+
+    def _prepare(self, frame: pd.DataFrame) -> pd.DataFrame:
+        return self.ml_model._prepare(frame)
+
     @classmethod
     def train(
         cls,
