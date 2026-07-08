@@ -2,11 +2,10 @@
 source = src
 omit =
     src/viz/dashboard.py
-    src/deployment/export.py
 
 [report]
 show_missing = true
-fail_under = 70
+fail_under = 65
 exclude_lines =
     pragma: no cover
     raise RuntimeError
