@@ -115,9 +115,7 @@ def create_model(
             hidden_layer_sizes=(128, 64), max_iter=500, random_state=seed, early_stopping=True
         )
     elif kind == "ensemble":
-        estimator = MultiOutputRegressor(
-            VotingRegressor(_base_estimators(seed, n_estimators))
-        )
+        estimator = MultiOutputRegressor(VotingRegressor(_base_estimators(seed, n_estimators)))
     elif kind == "xgboost":
         estimator = MultiOutputRegressor(_base_estimator(kind, seed, n_estimators))
     else:

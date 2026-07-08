@@ -1,4 +1,4 @@
-"""Serializable multi-output surrogate with multiple uncertainty strategies."""
+"""Serializable multi-output surrogate with configurable uncertainty."""
 
 from pathlib import Path
 from typing import Any
@@ -13,16 +13,7 @@ from src.uncertainty.quantile import QuantileSurrogate
 
 
 class SurrogateModel:
-    """Column-aware wrapper with configurable uncertainty strategy.
-
-    Supported uncertainty modes:
-    - ``conformal``: split conformal prediction (distribution-free, per-target symmetric)
-    - ``quantile``: quantile regression (direct lower/upper estimates)
-    - ``none``: point estimates only
-
-    If ``target_scalers`` are provided, targets are scaled before fitting and
-    inverse-scaled after prediction.
-    """
+    """Wrapper around sklearn pipeline with configurable uncertainty strategy."""
 
     def __init__(
         self,
@@ -44,13 +35,8 @@ class SurrogateModel:
         self.target_scalers = target_scalers or {}
         self.quantile_model = quantile_model
         self.uncertainty_mode = uncertainty_mode
-        # When False, skip the [0,1]/[0,inf) clipping in _postprocess. This
-        # MUST be False for any model whose target is a residual/delta rather
-        # than a raw physical quantity — e.g. HybridPhysicsMLModel's ML head
-        # predicts (actual - physics_baseline), which is legitimately
-        # negative for "*Health" columns. Clipping a residual to [0, 1]
-        # silently destroys the learned signal (residuals were being zeroed
-        # out whenever health degraded below the physics baseline).
+        # Must be False for models predicting residuals (e.g. HybridPhysicsMLModel)
+        # where target values can legitimately be negative.
         self.clip_predictions = clip_predictions
         self._feature_importances_: np.ndarray | None = None
         self._calibration_features_: np.ndarray | None = None
@@ -66,7 +52,7 @@ class SurrogateModel:
         for i, name in enumerate(self.target_names):
             scaler = self.target_scalers.get(name)
             if scaler is not None:
-                out[:, i] = scaler.transform(out[:, i: i + 1]).ravel()
+                out[:, i] = scaler.transform(out[:, i : i + 1]).ravel()
         return out
 
     def _unscale_targets(self, values: np.ndarray) -> np.ndarray:
@@ -76,7 +62,7 @@ class SurrogateModel:
         for i, name in enumerate(self.target_names):
             scaler = self.target_scalers.get(name)
             if scaler is not None:
-                out[:, i] = scaler.inverse_transform(out[:, i: i + 1]).ravel()
+                out[:, i] = scaler.inverse_transform(out[:, i : i + 1]).ravel()
         return out
 
     def _postprocess(self, values: pd.DataFrame) -> pd.DataFrame:
@@ -96,7 +82,7 @@ class SurrogateModel:
             for i, name in enumerate(self.target_names):
                 scaler = self.target_scalers.get(name)
                 if scaler is not None:
-                    scaler.fit(targets[:, i: i + 1])
+                    scaler.fit(targets[:, i : i + 1])
         scaled = self._scale_targets(targets)
         prepared = self._prepare(frame)
         self.pipeline.fit(prepared, scaled)
@@ -110,7 +96,9 @@ class SurrogateModel:
 
         # Fit quantile model if configured
         if self.uncertainty_mode == "quantile":
-            self.quantile_model = QuantileSurrogate(alpha=0.1, seed=42).fit(prepared, frame[self.target_names])
+            self.quantile_model = QuantileSurrogate(alpha=0.1, seed=42).fit(
+                prepared, frame[self.target_names]
+            )
 
         return self
 
@@ -135,13 +123,7 @@ class SurrogateModel:
     def predict_with_uncertainty(
         self, frame: pd.DataFrame
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, float]:
-        """Return point, lower, upper, and calibrated coverage.
-
-        Uses the configured uncertainty_mode:
-        - ``conformal``: split-conformal symmetric intervals
-        - ``quantile``: quantile-regression intervals
-        - ``none``: degenerate zero-width intervals
-        """
+        """Return point, lower, upper, and calibrated coverage."""
         prepared = self._prepare(frame)
         prediction = self.predict(frame)
 
@@ -170,11 +152,7 @@ class SurrogateModel:
     def predict_ensemble(
         self, frame: pd.DataFrame, n_members: int = 10
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """Return (mean, std, lower, upper) via bootstrapped ensemble.
-
-        Creates n_members predictions by adding small noise to the prepared
-        features and re-predicting, approximating ensemble uncertainty.
-        """
+        """Return (mean, std, lower, upper) via bootstrapped ensemble."""
         prepared = self._prepare(frame)
         base_preds = []
         rng = np.random.default_rng(42)
@@ -192,14 +170,27 @@ class SurrogateModel:
         std = np.std(stacked, axis=0, ddof=1)
         lower = mean - 1.96 * std
         upper = mean + 1.96 * std
-        mean_df = pd.DataFrame(self._unscale_targets(mean), columns=self.target_names, index=frame.index)
-        std_df = pd.DataFrame(std, columns=[f"{t}_std" for t in self.target_names], index=frame.index)
-        lower_df = pd.DataFrame(self._unscale_targets(lower), columns=self.target_names, index=frame.index)
-        upper_df = pd.DataFrame(self._unscale_targets(upper), columns=self.target_names, index=frame.index)
-        return self._postprocess(mean_df), std_df, self._postprocess(lower_df), self._postprocess(upper_df)
+        mean_df = pd.DataFrame(
+            self._unscale_targets(mean), columns=self.target_names, index=frame.index
+        )
+        std_df = pd.DataFrame(
+            std, columns=[f"{t}_std" for t in self.target_names], index=frame.index
+        )
+        lower_df = pd.DataFrame(
+            self._unscale_targets(lower), columns=self.target_names, index=frame.index
+        )
+        upper_df = pd.DataFrame(
+            self._unscale_targets(upper), columns=self.target_names, index=frame.index
+        )
+        return (
+            self._postprocess(mean_df),
+            std_df,
+            self._postprocess(lower_df),
+            self._postprocess(upper_df),
+        )
 
     def explain(self, frame: pd.DataFrame) -> dict[str, Any]:
-        """Return feature importance and per-prediction explanation."""
+        """Feature importance and per-prediction explanation."""
         explained: dict[str, Any] = {"method": "feature_importances"}
         if self._feature_importances_ is not None:
             names = self.pipeline_feature_names
@@ -212,6 +203,7 @@ class SurrogateModel:
         if self._calibration_features_ is not None and len(frame) > 0:
             prepared = self._prepare(frame)
             from sklearn.neighbors import NearestNeighbors
+
             nn = NearestNeighbors(n_neighbors=5, metric="euclidean")
             nn.fit(self._calibration_features_)
             dists, idxs = nn.kneighbors(prepared.values[:1])
@@ -222,7 +214,7 @@ class SurrogateModel:
         return explained
 
     def summary(self) -> dict[str, Any]:
-        """Return a JSON-safe summary of the model configuration."""
+        """JSON-safe model configuration summary."""
         return {
             "uncertainty_mode": self.uncertainty_mode,
             "targets": self.target_names,
@@ -231,7 +223,9 @@ class SurrogateModel:
             "has_calibrator": self.calibrator is not None,
             "has_quantile": self.quantile_model is not None,
             "has_target_scalers": len(self.target_scalers) > 0,
-            "pipeline_steps": [str(s) for s in self.pipeline.steps] if hasattr(self.pipeline, "steps") else [],
+            "pipeline_steps": (
+                [str(s) for s in self.pipeline.steps] if hasattr(self.pipeline, "steps") else []
+            ),
         }
 
     def save(self, path: str | Path) -> None:
@@ -246,10 +240,17 @@ class SurrogateModel:
         model: Any = joblib.load(path)
         if not isinstance(model, cls):
             raise TypeError("artifact is not a SurrogateModel")
-        for attr in ["pipeline_feature_names", "calibrator", "target_scalers",
-                     "quantile_model", "uncertainty_mode", "_feature_importances_",
-                     "_calibration_features_", "_calibration_targets_",
-                     "clip_predictions"]:
+        for attr in [
+            "pipeline_feature_names",
+            "calibrator",
+            "target_scalers",
+            "quantile_model",
+            "uncertainty_mode",
+            "_feature_importances_",
+            "_calibration_features_",
+            "_calibration_targets_",
+            "clip_predictions",
+        ]:
             if not hasattr(model, attr):
                 setattr(model, attr, None if attr != "uncertainty_mode" else "conformal")
                 if attr == "target_scalers":
@@ -261,6 +262,7 @@ class SurrogateModel:
         # Backward compat: old artifacts may have EngineID/Cycle in feature_names
         if hasattr(model, "feature_names") and "EngineID" in model.feature_names:
             from src.dataset.loader import SENSOR_FEATURES
+
             model.feature_names = SENSOR_FEATURES
         if hasattr(model, "pipeline_feature_names") and model.pipeline_feature_names is not None:
             old_pfn = model.pipeline_feature_names

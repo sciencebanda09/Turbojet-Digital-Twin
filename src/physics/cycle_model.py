@@ -1,27 +1,8 @@
-"""Physically consistent single-spool turbojet Brayton-cycle model with variable gas properties.
+"""Single-spool turbojet Brayton-cycle model with variable gas properties.
 
-Station convention. This module's public station labels (p2/t2, p3/t3, p4/t4)
-match the dataset schema exactly as specified in the challenge problem
-statement's measurement table, NOT the classical Brayton-cycle numbering:
-
-    Symbol   Challenge label            Physical station
-    ------   -------------------------  --------------------------------
-    P2, T2   Compressor Exit            downstream of the compressor
-    P3, T3   Combustor Exit             = turbine inlet (challenge PDF
-                                         explicitly calls T3 "Turbine
-                                         Inlet Temperature")
-    P4, T4   Turbine Exit               downstream of the turbine
-
-An unlabeled freestream/ambient inlet station (call it station "1", ram
-compression from ambient conditions) exists internally between the ambient
-boundary condition and the compressor, but is not part of the reported
-schema and has no output field. Earlier revisions of this module
-incorrectly treated p2/t2 as the *compressor inlet* (i.e. used the
-classical numbering rather than the challenge's), which silently
-misaligned every downstream equation with the actual dataset columns and
-produced systematically biased Thrust/TSFC predictions (physics-only
-R² as low as -115 on TSFC). This revision fixes that station mapping.
-"""
+Station labels (P2/T2, P3/T3, P4/T4) match the dataset schema:
+P2/T2 = compressor exit, P3/T3 = combustor exit/turbine inlet,
+P4/T4 = turbine exit."""
 
 from dataclasses import dataclass
 import math
@@ -79,27 +60,7 @@ class CycleState:
 
 
 class BraytonCycle:
-    """Zero-dimensional turbojet cycle with variable specific heats and realistic component maps.
-
-    Parameters
-    ----------
-    max_temperature_k : float
-        Turbine inlet temperature limit (TIT), i.e. an upper bound on the
-        combustor-exit temperature (challenge's T3).
-    design_pr : float
-        Compressor pressure ratio at 100 % design RPM.
-    design_mass_flow : float
-        Corrected air mass flow (kg/s) at sea-level static, 100 % RPM.
-    design_rpm : float
-        Design-point rotational speed (rev/min).
-    thrust_k1, thrust_k2, thrust_k3, thrust_c : float
-        Calibrated coefficients for the momentum-thrust equation
-        ``Thrust = k1*RPM*(P4/Pamb) + k2*FuelFlow - k3*V_inf + c``, fit by
-        least squares against the official challenge dataset (see
-        AUDIT_REPORT.md "Bug 6"). Held-out (unseen-engine) R^2 = 0.98.
-        Defaults are the fitted values; override only if recalibrating
-        against a different dataset.
-    """
+    """Zero-dimensional turbojet cycle with variable specific heats and component maps."""
 
     def __init__(
         self,
@@ -122,19 +83,7 @@ class BraytonCycle:
         self._thrust_c = thrust_c
 
     def _compute_mass_flow(self, rpm: float, pamb: float, tamb: float) -> float:
-        """Compressor inlet mass flow scaled by corrected-speed / corrected-flow relationships.
-
-        For a compressor operating on a constant working line the corrected mass
-        flow is approximately proportional to corrected speed:
-
-            m_dot * sqrt(theta) / delta  ~  N / sqrt(theta)
-
-        Solving for actual mass flow:
-
-            m_dot = design_mass_flow * (N / N_design) * (delta / theta)
-
-        where delta = Pamb / P0, theta = Tamb / T0, P0 = 101325 Pa, T0 = 288.15 K.
-        """
+        """Compressor inlet mass flow scaled by corrected-speed relationships."""
         p0 = 101325.0
         t0 = 288.15
         delta = pamb / p0
@@ -143,16 +92,7 @@ class BraytonCycle:
         return self.design_mass_flow * speed_frac * delta / max(theta, 0.1)
 
     def evaluate(self, value: CycleInput) -> CycleState:
-        """Reconstruct cycle stations and reject nonphysical boundary conditions.
-
-        Station sequence (see module docstring for the label convention):
-
-            ambient --[ram compression]--> station 1 (internal, unreported)
-                    --[compressor]-------> p2, t2   (Compressor Exit)
-                    --[combustor]--------> p3, t3   (Combustor Exit / Turbine Inlet)
-                    --[turbine]----------> p4, t4   (Turbine Exit)
-                    --[nozzle]-----------> thrust
-        """
+        """Reconstruct cycle stations. Returns station pressures, temperatures, thrust, and efficiency."""
         if not (
             0 <= value.mach <= 3
             and value.ambient_temperature_k > 0
@@ -164,12 +104,10 @@ class BraytonCycle:
         pamb = value.ambient_pressure_pa
         mach = value.mach
 
-        # --- Station 1 (internal): ram compression at the inlet, ambient -> t1/p1 ---
         gamma_air = gamma_from_cp(cp_air(tamb))
         t1 = total_temperature(tamb, mach, gamma_air)
         p1 = 0.98 * total_pressure(pamb, mach, gamma_air)
 
-        # --- Compressor: station 1 -> station 2 (p2/t2 = Compressor Exit) ---
         speed_fraction = max(0.2, min(1.15, value.rpm / self.design_rpm))
         pr = compressor_pressure_ratio(speed_fraction, value.compressor_health, self.design_pr)
         eta_c = compressor_efficiency(speed_fraction, value.compressor_health)
@@ -183,7 +121,6 @@ class BraytonCycle:
         cp_comp = cp_air(0.5 * (t1 + t2))
         compressor_work_w = air_flow * cp_comp * (t2 - t1)
 
-        # --- Combustor: station 2 -> station 3 (p3/t3 = Combustor Exit / Turbine Inlet) ---
         far = value.fuel_flow_kg_s / max(air_flow, 1e-9)
         eta_burn = combustor_efficiency(speed_fraction, value.combustor_health)
         fuel_energy = value.fuel_flow_kg_s * LOWER_HEATING_VALUE * eta_burn
@@ -192,52 +129,23 @@ class BraytonCycle:
         t3 = t2 + fuel_energy / (turbine_flow * cp_burn)
         if t3 > self.max_temperature_k:
             t3 = self.max_temperature_k
-        # Small combustor total-pressure loss (typically 2-6% for a turbojet).
         p3 = p2 * (0.96 - 0.03 * (1.0 - value.combustor_health))
 
-        # --- Turbine: station 3 -> station 4 (p4/t4 = Turbine Exit) ---
-        # Spool power balance: turbine work must supply the compressor work
-        # (single-spool, no gearbox/accessory losses modeled).
         eta_t = turbine_efficiency(speed_fraction, value.turbine_health)
         cp_turb_avg = cp_gas(0.5 * (t3 + max(t3 - 400.0, 400.0)), far)
         gamma_t = gamma_from_cp(cp_turb_avg)
         t4 = t3 - compressor_work_w / (turbine_flow * max(cp_turb_avg, 1.0))
-        # Iterate once on gas Cp evaluated at the actual T3/T4 midpoint.
         cp_turb_avg = cp_gas(0.5 * (t3 + t4), far)
         t4 = t3 - compressor_work_w / (turbine_flow * max(cp_turb_avg, 1.0))
         cp_turb_avg = cp_gas(0.5 * (t3 + t4), far)
         gamma_t = gamma_from_cp(cp_turb_avg)
 
-        # Isentropic turbine exit temperature (from actual T4 and efficiency),
-        # used only to derive the expansion pressure ratio.
         t4s = t3 - (t3 - t4) / max(eta_t, 0.01)
         p4_factor = max(0.05, t4s / max(t3, 1.0))
         p4 = p3 * p4_factor ** (gamma_t / (gamma_t - 1))
 
-        # --- Nozzle: station 4 -> ambient, produces thrust ---
-        #
-        # Calibrated momentum-thrust form. The textbook isentropic-nozzle
-        # exit-velocity equation (previously used here) is thermodynamically
-        # self-consistent but does not track this dataset's actual Thrust
-        # column (physics-only R^2 as low as -115 on TSFC) -- confirmed by
-        # correlation analysis that the dataset's Thrust generation is
-        # dominated by a near-linear combination of RPM*(P4/Pamb) (a
-        # momentum-thrust proxy: mass-flow x nozzle pressure ratio),
-        # FuelFlow (fuel-energy contribution to exit velocity), and V_inf
-        # (ram drag, correctly negative-signed). This form:
-        #
-        #     Thrust = k1 * RPM * (P4/Pamb) + k2 * FuelFlow - k3 * V_inf + c
-        #
-        # achieves physics-only R^2 = 0.97 (train) / 0.98 (held-out unseen
-        # engines, grouped split) against the official dataset -- verified
-        # NOT to be overfitting since held-out R^2 exceeds train R^2 with
-        # stable coefficients. The three physical quantities entering this
-        # equation (RPM, P4, FuelFlow) are the model's own state, computed
-        # through the corrected station chain above; only the four scalar
-        # coefficients below are calibrated constants, fit once against the
-        # provided dataset and documented as such (not re-tuned per engine
-        # or per split). See AUDIT_REPORT.md "Bug 6" for the full derivation
-        # and the classical isentropic-nozzle alternative that was replaced.
+        # Calibrated momentum-thrust form: Thrust = k1*RPM*(P4/Pamb) + k2*FuelFlow - k3*V_inf + c.
+        # Replaces the isentropic-nozzle equation which did not match this dataset's Thrust.
         flight_velocity = mach * speed_of_sound(tamb)
         pr_nozzle = max(p4, 1.0) / max(pamb, 1.0)
         thrust = max(
@@ -249,15 +157,15 @@ class BraytonCycle:
         )
         tsfc = value.fuel_flow_kg_s / max(thrust, 1e-9)
         turbine_work = turbine_flow * cp_turb_avg * (t3 - t4)
-        # Jet power still uses the isentropic exit-velocity shape (thermo-
-        # consistent, used only for the internal thermal_efficiency metric,
-        # not for the reported Thrust/TSFC).
         exit_gamma = gamma_from_cp(cp_gas(t4, far))
         pressure_ratio_nozzle_isentropic = max(pamb, 1.0) / max(p4, pamb, 1.0)
         exit_velocity_shape = math.sqrt(
             max(
                 0.0,
-                2 * cp_turb_avg * t4 * (1.0 - pressure_ratio_nozzle_isentropic ** ((exit_gamma - 1) / exit_gamma)),
+                2
+                * cp_turb_avg
+                * t4
+                * (1.0 - pressure_ratio_nozzle_isentropic ** ((exit_gamma - 1) / exit_gamma)),
             )
         )
         jet_power = 0.5 * turbine_flow * max(exit_velocity_shape**2 - flight_velocity**2, 0)

@@ -67,6 +67,7 @@ def run_benchmark_suite(
         # Model size
         import tempfile
         import joblib
+
         with tempfile.NamedTemporaryFile(suffix=".joblib", delete=False) as f:
             tmp_path = f.name
             joblib.dump(model, tmp_path)
@@ -140,13 +141,15 @@ def _generate_report(results: list[BenchmarkResult], path: Path) -> None:
             f"| {r.kind} | {r.mean_latency_ms:.3f} | {r.p50_latency_ms:.3f} | "
             f"{r.p95_latency_ms:.3f} | {r.p99_latency_ms:.3f} | {r.throughput_ops_s:.0f} |"
         )
-    lines.extend([
-        "",
-        "## Resource Usage",
-        "",
-        "| Model | Memory (MB) | Model Size (MB) |",
-        "|-------|-------------|-----------------|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Resource Usage",
+            "",
+            "| Model | Memory (MB) | Model Size (MB) |",
+            "|-------|-------------|-----------------|",
+        ]
+    )
     for r in sorted(results, key=lambda x: x.memory_mb):
         lines.append(f"| {r.kind} | {r.memory_mb:.1f} | {r.model_size_mb:.1f} |")
     lines.append("")

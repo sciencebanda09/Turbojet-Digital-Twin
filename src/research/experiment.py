@@ -107,8 +107,10 @@ def ablation_study(
                 tag="ablation",
             )
             results.append(r)
-            print(f"  {kind:>25s} {strategy:>10s} scale={str(scale):>5s}: "
-                  f"RMSE={r.metrics['rmse']:.1f}  R2={r.metrics['r2']:.4f}")
+            print(
+                f"  {kind:>25s} {strategy:>10s} scale={str(scale):>5s}: "
+                f"RMSE={r.metrics['rmse']:.1f}  R2={r.metrics['r2']:.4f}"
+            )
         except Exception as e:
             print(f"  {kind:>25s} {strategy:>10s} scale={str(scale):>5s}: FAILED - {e}")
     return results
@@ -118,15 +120,17 @@ def summarize_experiments(results: list[ExperimentResult]) -> pd.DataFrame:
     """Summarize experiment results in a comparison table."""
     rows = []
     for r in results:
-        rows.append({
-            "experiment_id": r.experiment_id,
-            "kind": r.config.get("kind"),
-            "split": r.config.get("split_strategy"),
-            "scale": r.config.get("scale_targets"),
-            "rmse": r.metrics.get("rmse"),
-            "mae": r.metrics.get("mae"),
-            "mape": r.metrics.get("mape"),
-            "r2": r.metrics.get("r2"),
-            "tag": r.config.get("tag", ""),
-        })
+        rows.append(
+            {
+                "experiment_id": r.experiment_id,
+                "kind": r.config.get("kind"),
+                "split": r.config.get("split_strategy"),
+                "scale": r.config.get("scale_targets"),
+                "rmse": r.metrics.get("rmse"),
+                "mae": r.metrics.get("mae"),
+                "mape": r.metrics.get("mape"),
+                "r2": r.metrics.get("r2"),
+                "tag": r.config.get("tag", ""),
+            }
+        )
     return pd.DataFrame(rows)

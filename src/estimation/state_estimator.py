@@ -18,7 +18,10 @@ class StateEstimator:
             )
         else:
             self.filter = UnscentedKalmanFilter(
-                np.ones(4), np.eye(4) * 0.02, np.eye(4) * 1e-5, np.eye(4) * 0.01,
+                np.ones(4),
+                np.eye(4) * 0.02,
+                np.eye(4) * 1e-5,
+                np.eye(4) * 0.01,
             )
 
     def update(self, health_observation: np.ndarray) -> np.ndarray:

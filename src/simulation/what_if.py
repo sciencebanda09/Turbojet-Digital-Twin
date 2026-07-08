@@ -1,16 +1,5 @@
-"""What-if scenario simulation engine.
-
-Lets a user perturb operating conditions (fuel flow, RPM, ambient temperature and
-pressure, compressor/turbine efficiency, sensor noise) around a baseline
-observation and immediately see how health, RUL, failure probability, thrust,
-TSFC, and prediction confidence change.
-
-The simulator is stateless per call: it does not mutate any :class:`DigitalTwin`
-history. It reuses the existing physics (:mod:`src.physics.cycle_model`), health
-(:mod:`src.health.overall`), RUL (:mod:`src.prediction.rul`), and risk
-(:mod:`src.prediction.failure_probability`) modules directly so results stay
-consistent with the rest of the platform.
-"""
+"""What-if scenario simulator. Perturb operating conditions and compare health,
+RUL, failure probability, thrust, and TSFC before/after. Stateless per call."""
 
 from __future__ import annotations
 
@@ -29,15 +18,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ScenarioAdjustment:
-    """User-controllable deltas applied on top of a baseline observation.
-
-    Each field is an absolute override when not ``None``; ``None`` means "keep
-    baseline value". Efficiency fields are multiplicative health factors in
-    ``[0, 1]`` applied on top of baseline (assumed healthy, i.e. 1.0) component
-    health. ``sensor_noise_std`` is a fractional standard deviation (e.g. ``0.02``
-    == 2% of signal) used only to compute prediction confidence, not to corrupt
-    the deterministic physics evaluation.
-    """
+    """Overrides applied on top of a baseline observation. None = keep baseline."""
 
     fuel_flow_kg_s: float | None = None
     rpm: float | None = None
@@ -58,7 +39,7 @@ class ScenarioAdjustment:
 
 @dataclass(frozen=True)
 class ScenarioSnapshot:
-    """Predicted outputs for one operating point (baseline or adjusted)."""
+    """Predicted outputs for one operating point."""
 
     compressor_health: float
     combustor_health: float
@@ -89,25 +70,13 @@ class ScenarioSimulator:
         degradation_threshold: float = 0.3,
         max_rul_cycles: float = 5_000.0,
     ):
-        """Create a simulator.
-
-        Args:
-            physics: Cycle model to evaluate; a fresh :class:`BraytonCycle` is
-                created if omitted.
-            degradation_threshold: Health value treated as functional failure,
-                consistent with :func:`src.prediction.rul.estimate_rul`.
-            max_rul_cycles: Cap applied to the single-shot RUL extrapolation.
-                Because this simulator has no degradation-trend history, a
-                near-1.0 health with zero observed slope would otherwise
-                extrapolate to an unrealistically large RUL; this cap keeps
-                the comparison meaningful.
-        """
+        """Create a simulator. max_rul_cycles caps single-shot RUL extrapolation."""
         self.physics = physics or BraytonCycle()
         self.degradation_threshold = degradation_threshold
         self.max_rul_cycles = max_rul_cycles
 
     def _snapshot(self, cycle_input: CycleInput, sensor_noise_std: float) -> ScenarioSnapshot:
-        """Evaluate one operating point end-to-end into a comparable snapshot."""
+        """Evaluate one operating point into a snapshot."""
         try:
             state = self.physics.evaluate(cycle_input)
         except ValueError as error:
@@ -116,12 +85,9 @@ class ScenarioSimulator:
         health = overall_health(
             cycle_input.compressor_health, cycle_input.combustor_health, cycle_input.turbine_health
         )
-        # Single-shot RUL: extrapolate a synthetic two-point trend from a
-        # healthy baseline (cycle 0, health=1.0) to the current health at
-        # cycle 1, matching estimate_rul's linear-trend contract without
-        # requiring twin history.
         rul = estimate_rul(
-            np.array([0.0, 1.0]), np.array([1.0, health]),
+            np.array([0.0, 1.0]),
+            np.array([1.0, health]),
             RULConfig(failure_threshold=self.degradation_threshold),
         )
         remaining_cycles = min(rul.remaining_cycles, self.max_rul_cycles)
@@ -142,17 +108,7 @@ class ScenarioSimulator:
     def run(
         self, baseline_observation: dict[str, float], adjustment: ScenarioAdjustment
     ) -> ScenarioComparison:
-        """Compare baseline vs adjusted operating conditions.
-
-        Args:
-            baseline_observation: Dict with at least ``Altitude``, ``Mach``,
-                ``Tamb``, ``Pamb``, ``RPM``, ``FuelFlow`` (matching the API
-                ``Observation`` schema).
-            adjustment: Overrides to apply on top of the baseline.
-
-        Returns:
-            A :class:`ScenarioComparison` with baseline, adjusted, and delta.
-        """
+        """Compare baseline vs adjusted operating conditions."""
         base_input = CycleInput(
             altitude_m=baseline_observation.get("Altitude", 0.0),
             mach=baseline_observation.get("Mach", 0.0),

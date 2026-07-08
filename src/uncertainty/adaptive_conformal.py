@@ -45,7 +45,9 @@ class AdaptiveConformalRegressor:
         self.cal_features_ = self.scaler_.fit_transform(
             np.asarray(calibration_features, dtype=float)
         )
-        self.cal_residuals_ = np.abs(np.asarray(truth, dtype=float) - np.asarray(prediction, dtype=float))
+        self.cal_residuals_ = np.abs(
+            np.asarray(truth, dtype=float) - np.asarray(prediction, dtype=float)
+        )
         n = min(self.n_neighbours, len(self.cal_features_))
         self.nn_ = NearestNeighbors(n_neighbors=n, metric="euclidean").fit(self.cal_features_)
         return self
@@ -53,17 +55,7 @@ class AdaptiveConformalRegressor:
     def predict_interval(
         self, test_features: np.ndarray, point_predictions: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray, float]:
-        """Return (lower, upper) adaptive intervals and empirical coverage.
-
-        Args:
-            test_features: (n_test, n_features) array of feature vectors.
-            point_predictions: (n_test, n_targets) array of point predictions.
-
-        Returns:
-            lower: (n_test, n_targets) lower bounds.
-            upper: (n_test, n_targets) upper bounds.
-            mean_coverage: average empirical coverage across test points.
-        """
+        """Return (lower, upper) adaptive intervals and empirical coverage."""
         if self.cal_features_ is None or self.cal_residuals_ is None or self.nn_ is None:
             raise RuntimeError("call fit() before predict_interval()")
 
@@ -75,27 +67,29 @@ class AdaptiveConformalRegressor:
         upper = np.zeros_like(values)
 
         for i in range(n_test):
-            distances, indices = self.nn_.kneighbors(test_scaled[i:i + 1])
+            distances, indices = self.nn_.kneighbors(test_scaled[i : i + 1])
             dists = distances[0] + 1e-12
             weights = np.exp(-0.5 * (dists / self.kernel_width) ** 2)
             weights /= weights.sum()
             for j in range(n_targets):
-                residuals = self.cal_residuals_[indices[0], j] if self.cal_residuals_.ndim > 1 else self.cal_residuals_[indices[0]]
+                residuals = (
+                    self.cal_residuals_[indices[0], j]
+                    if self.cal_residuals_.ndim > 1
+                    else self.cal_residuals_[indices[0]]
+                )
                 weighted_quantile = _weighted_quantile(residuals, weights, self.coverage)
                 lower[i, j] = values[i, j] - weighted_quantile
                 upper[i, j] = values[i, j] + weighted_quantile
 
         # Empirical coverage on calibration set
-        coverage_mask = (
-            (self.cal_residuals_ <= np.percentile(self.cal_residuals_, self.coverage * 100, axis=0))
+        coverage_mask = self.cal_residuals_ <= np.percentile(
+            self.cal_residuals_, self.coverage * 100, axis=0
         )
         mean_coverage = float(np.mean(coverage_mask)) if coverage_mask.size > 0 else self.coverage
         return lower, upper, mean_coverage
 
 
-def _weighted_quantile(
-    values: np.ndarray, weights: np.ndarray, quantile: float
-) -> float:
+def _weighted_quantile(values: np.ndarray, weights: np.ndarray, quantile: float) -> float:
     """Compute a weighted quantile using the default interpolation method."""
     order = np.argsort(values)
     values_sorted = values[order]

@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-
 _FALLBACK_HEALTH_COEF = 12.0
 _FALLBACK_HORIZON_COEF = 5.0
 
@@ -26,7 +25,9 @@ class FailureProbabilityCalibrator:
         self.health_coef = health_coef
         self.horizon_coef = horizon_coef
 
-    def fit(self, health_history: list[float], horizon: int = 25, threshold: float = 0.7) -> "FailureProbabilityCalibrator":
+    def fit(
+        self, health_history: list[float], horizon: int = 25, threshold: float = 0.7
+    ) -> "FailureProbabilityCalibrator":
         """Fit coefficients from engine degradation trajectories.
 
         For each point, labels 1 if health falls below *threshold* within
@@ -50,8 +51,12 @@ class FailureProbabilityCalibrator:
             return self
         model = LogisticRegression(C=1.0, fit_intercept=False, random_state=42)
         model.fit(features, labels)
-        self.health_coef = float(model.coef_[0, 0]) if model.coef_[0, 0] > 0 else _FALLBACK_HEALTH_COEF
-        self.horizon_coef = float(model.coef_[0, 1]) if model.coef_[0, 1] > 0 else _FALLBACK_HORIZON_COEF
+        self.health_coef = (
+            float(model.coef_[0, 0]) if model.coef_[0, 0] > 0 else _FALLBACK_HEALTH_COEF
+        )
+        self.horizon_coef = (
+            float(model.coef_[0, 1]) if model.coef_[0, 1] > 0 else _FALLBACK_HORIZON_COEF
+        )
         return self
 
     def save(self, path: str | Path) -> None:

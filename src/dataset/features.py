@@ -1,25 +1,9 @@
-"""Physics-informed feature generation.
+"""Physics-informed feature engineering: ratios, deltas, and physics residuals.
 
-``engineer_features`` keeps the original stable ratios/deltas. This module
-also adds ``healthy_reference_residuals``: for each row, the Brayton-cycle
-physics model (``src.physics.cycle_model.BraytonCycle``) is evaluated at
-that row's flight condition (altitude, Mach, ambient state, RPM, fuel flow)
-*assuming a fully healthy engine* (component health = 1.0), and the actual
-measured P2/T2/P3/T3/P4/T4 are expressed as fractional residuals against
-that healthy prediction.
-
-Rationale: instantaneous sensor readings are dominated by operating
-condition (altitude/Mach/RPM can swing P3/P4 by an order of magnitude),
-while health degradation in this dataset only perturbs those same readings
-by a few percent. A feature-based regressor trained on raw sensors has to
-learn to separate a small health-driven signal from a much larger
-condition-driven one with only a handful of engines to learn from, and in
-practice fails to (near-zero correlation, near-zero test R² on unseen
-engines even for a single-digit percent effect). Normalizing by the
-healthy-engine expectation at the *same* flight condition removes almost
-all of the condition-driven variance and leaves mostly the degradation
-signal, which is far easier for a small feature-based model to pick up.
-"""
+Residual features (ResP2–ResT4) express measured station values as fractional
+deviations from a healthy-engine prediction at the same flight condition.
+This removes operating-condition variance that would otherwise dominate the
+degradation signal the model needs to learn."""
 
 from __future__ import annotations
 
@@ -71,14 +55,7 @@ def _healthy_station_state(row: pd.Series) -> tuple[float, float, float, float, 
 
 
 def healthy_reference_residuals(frame: pd.DataFrame) -> pd.DataFrame:
-    """Fractional deviation of measured stations from a healthy-engine prediction.
-
-    Requires ``Altitude``, ``Mach``, ``Tamb``, ``Pamb``, ``RPM``, ``FuelFlow``,
-    and measured ``P2``, ``T2``, ``P3``, ``T3``, ``P4``, ``T4`` columns.
-    Rows with a nonphysical flight condition (rejected by ``BraytonCycle``)
-    get ``NaN`` residuals, which the downstream imputer fills with the
-    training median like any other missing value.
-    """
+    """Fractional deviation of measured stations from a healthy-engine prediction."""
     eps = np.finfo(float).eps
     healthy = frame.apply(_healthy_station_state, axis=1, result_type="expand")
     healthy.columns = ["hP2", "hT2", "hP3", "hT3", "hP4", "hT4"]

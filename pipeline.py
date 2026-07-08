@@ -22,24 +22,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def demo_data(engines: int | None = 5, cycles: int | None = 30, seed: int = 42) -> pd.DataFrame:
-    """Return a deterministic slice of the REAL official dataset for smoke testing.
-
-    Previously this fabricated synthetic engine telemetry with hand-invented
-    formulas (e.g. an ad-hoc Thrust equation unrelated to either the real
-    dataset or BraytonCycle's actual physics). That generator silently
-    diverged from real data over time -- see AUDIT_REPORT.md's Bug 6
-    follow-up, where the physics model's dataset-calibrated thrust
-    coefficients legitimately failed to fit the old synthetic generator's
-    differently-scaled Thrust values. This now returns a real slice of
-    ``data/turbojet_complete_dataset.csv`` instead, so "demo" data and
-    "real" data are the same ground truth, not two independently-invented
-    approximations of it.
-
-    ``engines``/``cycles`` are capped at what's actually available (10
-    engines x 30 cycles in the shipped dataset); requesting more just
-    returns everything available rather than erroring, to keep old call
-    sites working unchanged.
-    """
+    """Deterministic slice of the official dataset for smoke testing."""
     n_engines = None if engines is None else min(engines, 10)
     n_cycles = None if cycles is None else min(cycles, 30)
     return sample_real_dataset(n_engines=n_engines, n_cycles=n_cycles, seed=seed)
@@ -52,8 +35,11 @@ def main() -> None:
     train = commands.add_parser("train")
     train.add_argument("--data", required=True)
     train.add_argument("--output", default="models/best_model.joblib")
-    train.add_argument("--kind", default="extra_trees",
-                       choices=["hist_gradient_boosting", "extra_trees", "random_forest", "stacking", "hybrid"])
+    train.add_argument(
+        "--kind",
+        default="extra_trees",
+        choices=["hist_gradient_boosting", "extra_trees", "random_forest", "stacking", "hybrid"],
+    )
     train.add_argument("--n-estimators", type=int, default=300)
     train.add_argument("--strategy", default="official", choices=["official", "grouped"])
     tune = commands.add_parser("tune")
@@ -64,10 +50,14 @@ def main() -> None:
     exp.add_argument("--data", required=True)
     exp.add_argument("--kind", default="extra_trees")
     exp.add_argument("--n-estimators", type=int, default=300)
-    exp.add_argument("--split", default="grouped", choices=["official", "grouped"],
-                     help="'grouped' holds out entire engines (tests cross-engine generalization; "
-                          "15%% of challenge score). 'official' reproduces train.csv/test.csv split "
-                          "(same engines in both). Report BOTH in your submission.")
+    exp.add_argument(
+        "--split",
+        default="grouped",
+        choices=["official", "grouped"],
+        help="'grouped' holds out entire engines (tests cross-engine generalization; "
+        "15%% of challenge score). 'official' reproduces train.csv/test.csv split "
+        "(same engines in both). Report BOTH in your submission.",
+    )
     exp.add_argument("--output-dir", default="results/experiments")
     exp.add_argument("--tag", default="")
 
@@ -103,8 +93,11 @@ def main() -> None:
             "metrics=%s",
             json.dumps(
                 train_from_csv(
-                    args.data, args.output, args.kind,
-                    n_estimators=args.n_estimators, strategy=args.strategy,
+                    args.data,
+                    args.output,
+                    args.kind,
+                    n_estimators=args.n_estimators,
+                    strategy=args.strategy,
                 )
             ),
         )
@@ -127,17 +120,25 @@ def main() -> None:
         LOGGER.info("benchmark complete %d variants", len(results))
     elif args.command == "experiment":
         result = run_experiment(
-            args.data, kind=args.kind, n_estimators=args.n_estimators,
-            split_strategy=args.split, output_dir=args.output_dir, tag=args.tag,
+            args.data,
+            kind=args.kind,
+            n_estimators=args.n_estimators,
+            split_strategy=args.split,
+            output_dir=args.output_dir,
+            tag=args.tag,
         )
-        LOGGER.info("experiment complete id=%s metrics=%s", result.experiment_id, json.dumps(result.metrics))
+        LOGGER.info(
+            "experiment complete id=%s metrics=%s", result.experiment_id, json.dumps(result.metrics)
+        )
 
     elif args.command == "ablation":
         results = ablation_study(args.data, output_dir=args.output_dir)
         report_path = Path(args.output_dir) / "ablation_report.md"
         generate_research_report(
-            [{"experiment_id": r.experiment_id, "config": r.config, "metrics": r.metrics}
-             for r in results],
+            [
+                {"experiment_id": r.experiment_id, "config": r.config, "metrics": r.metrics}
+                for r in results
+            ],
             report_path,
         )
         LOGGER.info("ablation complete %d experiments, report=%s", len(results), report_path)

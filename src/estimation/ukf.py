@@ -24,7 +24,8 @@ class UnscentedKalmanFilter:
         self.covariance = np.asarray(covariance, dtype=float)
         self.process_noise = np.asarray(process_noise, dtype=float)
         self.measurement_noise = (
-            np.asarray(measurement_noise) if measurement_noise is not None
+            np.asarray(measurement_noise)
+            if measurement_noise is not None
             else np.eye(state.size) * 0.01
         )
         self.alpha, self.beta, self.kappa = alpha, beta, kappa
@@ -61,7 +62,11 @@ class UnscentedKalmanFilter:
         expected = wm @ observed
         dy = observed - expected
         dx = points - self.state
-        noise = np.asarray(measurement_noise) if measurement_noise is not None else self.measurement_noise
+        noise = (
+            np.asarray(measurement_noise)
+            if measurement_noise is not None
+            else self.measurement_noise
+        )
         innovation_cov = (dy.T * wc) @ dy + noise
         cross = (dx.T * wc) @ dy
         gain = np.linalg.solve(innovation_cov, cross.T).T

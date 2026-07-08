@@ -19,8 +19,12 @@ def benchmark(
     train: pd.DataFrame,
     test: pd.DataFrame,
     kinds: tuple[str, ...] = (
-        "extra_trees", "random_forest", "gradient_boosting",
-        "hist_gradient_boosting", "stacking", "mlp",
+        "extra_trees",
+        "random_forest",
+        "gradient_boosting",
+        "hist_gradient_boosting",
+        "stacking",
+        "mlp",
     ),
 ) -> tuple[object, list[BenchmarkResult]]:
     """Fit candidates, rank by aggregate RMSE, and return the best model."""

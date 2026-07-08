@@ -1,4 +1,4 @@
-"""FastAPI service for real-time and batch inference."""
+"""FastAPI service for real-time and batch engine inference."""
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExplainRequest(BaseModel):
-    """Request for model explanation of one or more sensor observations."""
+    """Request for model explanation of sensor observations."""
 
     observations: list["Observation"]
     feature_names: list[str] | None = None
@@ -48,7 +48,7 @@ class Observation(BaseModel):
 
 
 class ScenarioRequest(BaseModel):
-    """What-if simulation request: baseline observation plus adjustments."""
+    """What-if simulation request with baseline and adjustments."""
 
     baseline: Observation
     fuel_flow_kg_s: float | None = None

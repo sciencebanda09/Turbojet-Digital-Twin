@@ -1,16 +1,5 @@
-"""Root cause analysis for health and RUL predictions.
-
-Turns a before/after comparison (typically from
-:class:`src.simulation.what_if.ScenarioSimulator` or a fault-injection run) into
-a ranked, human-readable causal chain: which inputs changed, how much each
-contributed to the health delta, and the resulting narrative.
-
-If a trained surrogate model with a tree-based estimator is loaded and the
-optional ``shap`` package is installed, SHAP values are used to rank
-contributions for ML-model predictions. Otherwise a physics-based sensitivity
-ranking is used, which requires no extra dependency and always works for the
-physics fallback path.
-"""
+"""Root cause analysis for health and RUL predictions. Ranks input contributions
+to health deltas using physics sensitivity or SHAP values."""
 
 from __future__ import annotations
 
@@ -29,12 +18,6 @@ except ImportError:  # pragma: no cover
     _HAS_SHAP = False
 
 
-# Approximate physics sensitivity of overall health to each named input,
-# expressed as (health-change-per-unit-relative-change, causal narrative).
-# These coefficients reflect the qualitative physics in
-# src.physics.cycle_model.BraytonCycle: higher fuel flow raises turbine inlet
-# temperature and thermal stress (hurting turbine/combustor health headroom
-# over time); lower compressor/turbine efficiency directly reduces health.
 _SENSITIVITY = {
     "FuelFlow": (
         0.6,
@@ -43,14 +26,8 @@ _SENSITIVITY = {
     "RPM": (0.4, "RPM increased -> compressor pressure ratio rose -> mechanical loading increased"),
     "Tamb": (0.15, "Ambient temperature increased -> compressor work increased -> margin reduced"),
     "Pamb": (0.1, "Ambient pressure changed -> station pressures shifted -> cycle margin shifted"),
-    "compressor_efficiency": (
-        1.0,
-        "Compressor efficiency decreased -> pressure ratio degraded -> compressor health decreased",
-    ),
-    "turbine_efficiency": (
-        1.0,
-        "Turbine efficiency decreased -> expansion work degraded -> turbine health decreased",
-    ),
+    "compressor_efficiency": (1.0, "Compressor efficiency decreased -> pressure ratio degraded"),
+    "turbine_efficiency": (1.0, "Turbine efficiency decreased -> expansion work degraded"),
 }
 
 
@@ -85,17 +62,7 @@ def analyze_scenario(
     adjusted_inputs: dict[str, float],
     health_delta: float,
 ) -> RootCauseReport:
-    """Explain a what-if health change via physics-sensitivity ranking.
-
-    Args:
-        baseline_inputs: Input values before adjustment (e.g. FuelFlow, RPM,
-            Tamb, Pamb, compressor_efficiency, turbine_efficiency).
-        adjusted_inputs: Same keys, after adjustment.
-        health_delta: ``adjusted_health - baseline_health`` from the simulation.
-
-    Returns:
-        Ranked contributing factors and a causal-chain narrative.
-    """
+    """Explain a what-if health change via physics-sensitivity ranking."""
     scored: list[ContributingFactor] = []
     for key, (weight, narrative) in _SENSITIVITY.items():
         if key not in baseline_inputs or key not in adjusted_inputs:
@@ -123,15 +90,7 @@ def analyze_scenario(
 
 
 def analyze_faults(fault_summary: list[dict[str, Any]], health_delta: float) -> RootCauseReport:
-    """Explain a health change driven by active faults (see :mod:`src.faults.injection`).
-
-    Args:
-        fault_summary: Output of ``FaultInjector.to_summary()``.
-        health_delta: Observed health change attributable to the faults.
-
-    Returns:
-        Ranked contributing factors, one per active fault, by severity.
-    """
+    """Explain a health change driven by active faults."""
     narratives = {
         "compressor_fouling": "Compressor fouling -> pressure ratio degraded -> compressor health decreased",
         "turbine_erosion": "Turbine erosion -> expansion efficiency degraded -> turbine health decreased",
@@ -163,18 +122,7 @@ def analyze_faults(fault_summary: list[dict[str, Any]], health_delta: float) -> 
 
 
 def shap_feature_importance(model: Any, frame: Any) -> list[ContributingFactor] | None:
-    """Rank ML-model feature contributions with SHAP, if available.
-
-    Args:
-        model: A loaded ``SurrogateModel`` (see ``src.surrogate.model``) whose
-            underlying estimator SHAP supports (tree-based models).
-        frame: A single-row ``pandas.DataFrame`` of feature values matching
-            ``model.feature_names``.
-
-    Returns:
-        Ranked factors by mean absolute SHAP value, or ``None`` if SHAP is not
-        installed or the estimator is unsupported.
-    """
+    """Rank ML-model feature contributions with SHAP, if available."""
     if not _HAS_SHAP:
         logger.info("shap not installed; skipping SHAP-based root cause ranking")
         return None

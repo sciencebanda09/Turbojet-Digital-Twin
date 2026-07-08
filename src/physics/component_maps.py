@@ -21,7 +21,7 @@ def compressor_pressure_ratio(
     speed = np.clip(corrected_speed_fraction, 0.2, 1.15)
     # Normalised off-design PR ratio: ~1.0 at design speed (s=1.0), ~0 at s~0.
     # The raw polynomial (1 + 8.5*s^2.5 - 2.5*s^5) gives 7.0 at s=1.0, so divide by 7.
-    pr_ratio = (1.0 + 8.5 * speed ** 2.5 - 2.5 * speed ** 5) / 7.0
+    pr_ratio = (1.0 + 8.5 * speed**2.5 - 2.5 * speed**5) / 7.0
     return 1.0 + (design_pr - 1.0) * pr_ratio * health
 
 

@@ -1,15 +1,6 @@
-"""Multi-option maintenance decision engine.
-
-Where :mod:`src.maintenance.recommendation` returns a single recommended action,
-this module generates the realistic menu of options a maintenance planner
-actually chooses from (do nothing / monitor, inspect, repair, overhaul,
-replace), each scored on cost, downtime, residual risk, and expected RUL gain,
-then ranks them by a configurable weighted utility.
-
-This module reuses :func:`src.maintenance.economics.estimate_economics` for
-cost/risk math and does not replace :func:`src.maintenance.recommendation.recommend`;
-both stay available for backward compatibility.
-"""
+"""Multi-option maintenance decision engine. Generates and scores maintenance
+options (monitor, inspect, repair, overhaul, replace) by cost, downtime,
+risk, and RUL gain, ranked by weighted utility."""
 
 from __future__ import annotations
 
@@ -61,19 +52,7 @@ class MaintenanceDecisionEngine:
         full_life_horizon_cycles: float = 300.0,
         failure_cost: float = 500_000.0,
     ) -> None:
-        """Create the engine.
-
-        Args:
-            cost_weight: Utility weight penalizing estimated cost (higher cost
-                = lower utility).
-            downtime_weight: Utility weight penalizing downtime hours.
-            risk_weight: Utility weight rewarding residual-risk reduction.
-            rul_gain_weight: Utility weight rewarding expected RUL gain.
-            full_life_horizon_cycles: Reference "as-good-as-new" RUL horizon
-                used to scale RUL gain estimates.
-            failure_cost: Cost of an unplanned failure, passed through to
-                :func:`estimate_economics`.
-        """
+        """Weights are normalized to sum to 1.0 internally."""
         total = cost_weight + downtime_weight + risk_weight + rul_gain_weight
         if total <= 0:
             raise ValueError("at least one weight must be positive")
@@ -87,16 +66,7 @@ class MaintenanceDecisionEngine:
     def generate_options(
         self, health: float, rul_cycles: float, failure_probability: float
     ) -> list[MaintenanceOption]:
-        """Generate every candidate maintenance option, ranked best-first.
-
-        Args:
-            health: Current overall health in ``[0, 1]``.
-            rul_cycles: Current predicted remaining useful life, in cycles.
-            failure_probability: Current failure probability in ``[0, 1]``.
-
-        Returns:
-            Options sorted descending by ``utility_score``.
-        """
+        """Generate all candidate options sorted by utility score (best first)."""
         if not 0.0 <= health <= 1.0:
             raise ValueError(f"health must be in [0, 1], got {health}")
         if not 0.0 <= failure_probability <= 1.0:

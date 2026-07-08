@@ -14,7 +14,9 @@ def total_pressure(static_pressure: float, mach: float, gamma: float = 1.4) -> f
     return static_pressure * (1 + 0.5 * (gamma - 1) * mach**2) ** (gamma / (gamma - 1))
 
 
-def speed_of_sound(temperature: float, gamma: float = 1.4, gas_constant: float = GAS_CONSTANT_AIR) -> float:
+def speed_of_sound(
+    temperature: float, gamma: float = 1.4, gas_constant: float = GAS_CONSTANT_AIR
+) -> float:
     """Return ideal-gas speed of sound in m/s."""
     if temperature <= 0:
         raise ValueError("temperature must be positive")

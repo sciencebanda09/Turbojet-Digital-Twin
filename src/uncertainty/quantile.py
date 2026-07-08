@@ -41,7 +41,9 @@ class QuantileSurrogate:
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> "QuantileSurrogate":
         """Fit quantile models for every target at q_low, q_mid, q_high."""
-        target_names = y.columns if hasattr(y, "columns") else [f"target_{i}" for i in range(y.shape[1])]
+        target_names = (
+            y.columns if hasattr(y, "columns") else [f"target_{i}" for i in range(y.shape[1])]
+        )
         y_values = y.values if hasattr(y, "values") else np.asarray(y)
         quantiles = {"low": self.alpha / 2, "mid": 0.5, "high": 1.0 - self.alpha / 2}
         for name in quantiles:
@@ -59,9 +61,7 @@ class QuantileSurrogate:
         median = np.column_stack([self.models["mid"][t].predict(X) for t in target_names])
         return pd.DataFrame(median, columns=target_names, index=X.index)
 
-    def predict_interval(
-        self, X: pd.DataFrame
-    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def predict_interval(self, X: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Return (median, lower, upper) prediction DataFrames."""
         target_names = list(self.models["mid"].keys())
         median = np.column_stack([self.models["mid"][t].predict(X) for t in target_names])

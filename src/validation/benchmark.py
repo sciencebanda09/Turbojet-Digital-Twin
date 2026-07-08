@@ -118,36 +118,42 @@ def _generate_report(results: list[ValidationResult], path: Path) -> None:
             f"| {r.kind} | {r.split_strategy} | {r.rmse:.2f} | {r.mae:.2f} | "
             f"{r.r2:.4f} | {r.mape:.2f} | {r.inference_time_ms:.2f} |"
         )
-    lines.extend([
-        "",
-        "## Per-Target Metrics",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Per-Target Metrics",
+            "",
+        ]
+    )
     for r in results:
         lines.append(f"### {r.name}")
         lines.append("")
         lines.append("| Target | RMSE | MAE | MAPE (%) | R² |")
         lines.append("|--------|------|-----|----------|-----|")
         for name, m in r.per_target.items():
-            lines.append(f"| {name} | {m['rmse']:.4f} | {m['mae']:.4f} | {m['mape']:.2f} | {m['r2']:.4f} |")
+            lines.append(
+                f"| {name} | {m['rmse']:.4f} | {m['mae']:.4f} | {m['mape']:.2f} | {m['r2']:.4f} |"
+            )
         lines.append("")
 
-    lines.extend([
-        "## C-MAPSS Comparison",
-        "",
-        "Published C-MAPSS baselines (FD001, single fault mode):",
-        "",
-        "| Method | RMSE (RUL) | Score |",
-        "|--------|-----------|-------|",
-        "| LSTM (2020) | ~12.5 | ~250 |",
-        "| CNN (2019) | ~13.2 | ~280 |",
-        "| Our Health Model | N/A (health, not RUL) | — |",
-        "",
-        "Note: Direct C-MAPSS comparison requires RUL-labeled datasets with run-to-failure trajectories. ",
-        "Our dataset contains health degradation over 30 cycles without reaching failure. ",
-        "The health estimation accuracy (R² > 0.95 on held-out cycles) demonstrates strong ",
-        "degradation tracking capability.",
-    ])
+    lines.extend(
+        [
+            "## C-MAPSS Comparison",
+            "",
+            "Published C-MAPSS baselines (FD001, single fault mode):",
+            "",
+            "| Method | RMSE (RUL) | Score |",
+            "|--------|-----------|-------|",
+            "| LSTM (2020) | ~12.5 | ~250 |",
+            "| CNN (2019) | ~13.2 | ~280 |",
+            "| Our Health Model | N/A (health, not RUL) | — |",
+            "",
+            "Note: Direct C-MAPSS comparison requires RUL-labeled datasets with run-to-failure trajectories. ",
+            "Our dataset contains health degradation over 30 cycles without reaching failure. ",
+            "The health estimation accuracy (R² > 0.95 on held-out cycles) demonstrates strong ",
+            "degradation tracking capability.",
+        ]
+    )
     path.write_text("\n".join(lines))
 
 

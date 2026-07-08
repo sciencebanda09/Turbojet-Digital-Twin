@@ -1,20 +1,8 @@
-"""Hybrid physics + ML surrogate: ML models the residual from the physics simulation.
+"""Hybrid physics + ML: ML learns the residual (actual - physics prediction).
 
-Instead of predicting targets directly, the ML model learns the *error* of the
-physics model::
-
-    actual = physics_prediction + ML_prediction(residual)
-
-This is a powerful digital twin approach because:
-1. The physics handles condition-dependent variation
-2. The ML only needs to model the degradation signal (much simpler)
-3. The combined prediction is physically grounded and data-corrected
-4. The residual magnitude itself is a diagnostic (model mismatch -> novel degradation)
-
-TSFC is NOT modelled as an independent hybrid target. Because TSFC = FuelFlow / Thrust
-the residual is inherently nonlinear (proportional to 1/Thrust). Instead, TSFC is
-derived *post-hoc* from the hybrid Thrust prediction and the known fuel flow.
-"""
+Combined prediction = physics + ml_residual. The physics handles condition-dependent
+variation; ML models only the degradation signal. TSFC is derived post-hoc from
+hybrid Thrust and known fuel flow."""
 
 from pathlib import Path
 import joblib
@@ -102,6 +90,7 @@ class HybridPhysicsMLModel:
         from src.dataset.preprocess import build_preprocessor
         from src.surrogate.train import PIPELINE_FEATURES, _base_estimator
         from sklearn.multioutput import MultiOutputRegressor
+
         estimator = MultiOutputRegressor(_base_estimator(ml_kind, seed, n_estimators))
         pipeline = Pipeline(
             [("preprocess", build_preprocessor(PIPELINE_FEATURES)), ("model", estimator)]
@@ -112,8 +101,12 @@ class HybridPhysicsMLModel:
         # any "*Health" column to [0, 1], which would zero out every
         # negative residual and destroy the learned degradation signal.
         ml_model.__init__(
-            pipeline, SENSOR_FEATURES, HYBRID_ML_TARGETS, PIPELINE_FEATURES,
-            target_scalers={}, clip_predictions=False,
+            pipeline,
+            SENSOR_FEATURES,
+            HYBRID_ML_TARGETS,
+            PIPELINE_FEATURES,
+            target_scalers={},
+            clip_predictions=False,
         )
         ml_model.fit(residual_frame)
         return cls(ml_model, physics)
@@ -230,12 +223,26 @@ def _derive_tsfc(frame: pd.DataFrame, thrust_preds: pd.DataFrame) -> pd.Series:
     return pd.Series(fuel_flow / safe_thrust, index=frame.index)
 
 
-def _overall_from_components(
-    comp_preds: pd.DataFrame, res_preds: pd.DataFrame
-) -> pd.Series:
+def _overall_from_components(comp_preds: pd.DataFrame, res_preds: pd.DataFrame) -> pd.Series:
     """Compute overall health from component health predictions."""
     from src.health.overall import overall_health
-    c = comp_preds["CompressorHealth"].values if "CompressorHealth" in comp_preds else res_preds.get("CompressorHealth", pd.Series(1.0))
-    co = comp_preds["CombustorHealth"].values if "CombustorHealth" in comp_preds else res_preds.get("CombustorHealth", pd.Series(1.0))
-    t = comp_preds["TurbineHealth"].values if "TurbineHealth" in comp_preds else res_preds.get("TurbineHealth", pd.Series(1.0))
-    return pd.Series([overall_health(float(c[i]), float(co[i]), float(t[i])) for i in range(len(c))], index=comp_preds.index)
+
+    c = (
+        comp_preds["CompressorHealth"].values
+        if "CompressorHealth" in comp_preds
+        else res_preds.get("CompressorHealth", pd.Series(1.0))
+    )
+    co = (
+        comp_preds["CombustorHealth"].values
+        if "CombustorHealth" in comp_preds
+        else res_preds.get("CombustorHealth", pd.Series(1.0))
+    )
+    t = (
+        comp_preds["TurbineHealth"].values
+        if "TurbineHealth" in comp_preds
+        else res_preds.get("TurbineHealth", pd.Series(1.0))
+    )
+    return pd.Series(
+        [overall_health(float(c[i]), float(co[i]), float(t[i])) for i in range(len(c))],
+        index=comp_preds.index,
+    )

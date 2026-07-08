@@ -1,4 +1,4 @@
-"""Unified stateful digital twin API."""
+"""Stateful digital twin facade."""
 
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -21,7 +21,7 @@ _HEALTH_TARGETS = ["CompressorHealth", "CombustorHealth", "TurbineHealth", "Over
 
 
 class DigitalTwin:
-    """Stateful fusion of physics, sensor data, and learned surrogate predictions."""
+    """Fuses physics model, surrogate predictions, and Kalman state estimation."""
 
     def __init__(self, engine_id: str = "engine-1", estimator_method: str = "ekf") -> None:
         self.engine_id = engine_id
@@ -34,7 +34,6 @@ class DigitalTwin:
         self.failure_calibrator: FailureProbabilityCalibrator | None = None
 
     def set_failure_calibrator(self, calibrator: FailureProbabilityCalibrator) -> "DigitalTwin":
-        """Attach a data-calibrated failure risk model."""
         self.failure_calibrator = calibrator
         return self
 
@@ -47,13 +46,16 @@ class DigitalTwin:
     def load_model(self, path: str | Path) -> "DigitalTwin":
         """Load a trained surrogate artifact (SurrogateModel or HybridPhysicsMLModel)."""
         import joblib
+
         artifact = joblib.load(path)
         if isinstance(artifact, dict) and "ml_model" in artifact:
             self.model = HybridPhysicsMLModel.load(path)
         elif isinstance(artifact, SurrogateModel):
             self.model = artifact
         else:
-            raise TypeError(f"artifact is a {type(artifact).__name__}, expected SurrogateModel or HybridPhysicsMLModel")
+            raise TypeError(
+                f"artifact is a {type(artifact).__name__}, expected SurrogateModel or HybridPhysicsMLModel"
+            )
         return self
 
     def _point_bundle(
@@ -177,9 +179,15 @@ class DigitalTwin:
             remaining = 1_000.0
             rul_lower = rul_upper = remaining
             degradation_rate = 0.0
-        probability = failure_probability(health["OverallHealth"], remaining, calibrator=self.failure_calibrator)
-        probability_lower = failure_probability(float(upper["OverallHealth"]), rul_upper, calibrator=self.failure_calibrator)
-        probability_upper = failure_probability(float(lower["OverallHealth"]), rul_lower, calibrator=self.failure_calibrator)
+        probability = failure_probability(
+            health["OverallHealth"], remaining, calibrator=self.failure_calibrator
+        )
+        probability_lower = failure_probability(
+            float(upper["OverallHealth"]), rul_upper, calibrator=self.failure_calibrator
+        )
+        probability_upper = failure_probability(
+            float(lower["OverallHealth"]), rul_lower, calibrator=self.failure_calibrator
+        )
         probability_lower, probability_upper = sorted((probability_lower, probability_upper))
         decision = recommend(
             health["OverallHealth"],
@@ -215,7 +223,9 @@ class DigitalTwin:
         """Fit the failure probability model from accumulated health history."""
         if len(self.history) >= 10:
             health_trace = [x["OverallHealth"] for x in self.history]
-            self.failure_calibrator = FailureProbabilityCalibrator().fit(health_trace, horizon, threshold)
+            self.failure_calibrator = FailureProbabilityCalibrator().fit(
+                health_trace, horizon, threshold
+            )
         return self
 
     def batch_predict(self, frame: pd.DataFrame) -> pd.DataFrame:

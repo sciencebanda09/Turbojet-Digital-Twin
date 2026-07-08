@@ -1,4 +1,4 @@
-"""SHAP-based model explainability with fallback to permutation importance."""
+"""SHAP model explainability with permutation importance fallback."""
 
 from typing import Any, Callable
 import numpy as np
@@ -6,6 +6,7 @@ import pandas as pd
 
 try:
     import shap
+
     _HAS_SHAP = True
 except ImportError:
     shap = None
@@ -19,23 +20,14 @@ def explain_prediction(
     background_data: pd.DataFrame | None = None,
     model: Any = None,
 ) -> dict[str, Any]:
-    """Generate per-prediction and global explanations.
-
-    Args:
-        predict_fn: Callable accepting a feature DataFrame and returning
-            a 2D array of predictions (samples, targets).
-        frame: One or more rows to explain. Must contain only the features
-            in ``feature_names`` (already preprocessed if required).
-        feature_names: Column names corresponding to model features.
-        background_data: Optional background dataset for SHAP.
-        model: Optional sklearn model/pipeline.
-
-    Returns:
-        Dict with ``method``, ``global_importance``, ``local_explanations``, ``base_value``.
-    """
+    """Per-prediction and global explanations via SHAP or permutation importance."""
     names = feature_names or list(frame.columns)
     bg = background_data if background_data is not None else frame
-    result: dict[str, Any] = {"method": "permutation", "global_importance": [], "local_explanations": []}
+    result: dict[str, Any] = {
+        "method": "permutation",
+        "global_importance": [],
+        "local_explanations": [],
+    }
 
     if _HAS_SHAP:
         try:
@@ -52,10 +44,11 @@ def explain_prediction(
             if global_imp.ndim > 1:
                 global_imp = global_imp.mean(axis=tuple(range(1, global_imp.ndim)))
             global_imp = np.nan_to_num(global_imp, nan=0.0, posinf=0.0, neginf=0.0)
-            global_imp_list = global_imp.tolist() if hasattr(global_imp, "tolist") else list(global_imp)
+            global_imp_list = (
+                global_imp.tolist() if hasattr(global_imp, "tolist") else list(global_imp)
+            )
             result["global_importance"] = [
-                {"feature": str(n), "importance": float(v)}
-                for n, v in zip(names, global_imp_list)
+                {"feature": str(n), "importance": float(v)} for n, v in zip(names, global_imp_list)
             ]
             result["global_importance"].sort(key=lambda x: -x["importance"])
 
@@ -66,14 +59,14 @@ def explain_prediction(
                 vals = np.nan_to_num(vals, nan=0.0, posinf=0.0, neginf=0.0)
                 vals_list = vals.tolist() if hasattr(vals, "tolist") else list(vals)
                 local = [
-                    {"feature": str(n), "shap_value": float(v)}
-                    for n, v in zip(names, vals_list)
+                    {"feature": str(n), "shap_value": float(v)} for n, v in zip(names, vals_list)
                 ]
                 local.sort(key=lambda x: -abs(x["shap_value"]))
                 result["local_explanations"].append({"row": int(i), "factors": local[:10]})
             return result
         except Exception:
             import logging
+
             logging.exception("SHAP explainer failed, falling back to permutation importance")
 
     # Fallback: permutation importance
@@ -108,10 +101,7 @@ def explain_prediction(
                     vals = dev / dev_sum * imp_sum
                 else:
                     vals = imp_vec.copy()
-                local = [
-                    {"feature": str(n), "shap_value": float(v)}
-                    for n, v in zip(names, vals)
-                ]
+                local = [{"feature": str(n), "shap_value": float(v)} for n, v in zip(names, vals)]
                 local.sort(key=lambda x: -abs(x["shap_value"]))
                 result["local_explanations"].append({"row": int(j), "factors": local[:10]})
         except Exception:
