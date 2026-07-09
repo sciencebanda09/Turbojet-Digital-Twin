@@ -1,10 +1,12 @@
 # Chapter 3: Equations
 
-[← Chapter 2: Theory](Theory.md) · [Chapter 4: Architecture →](ARCHITECTURE.md)
+[← Chapter 2: Theory](Theory.md) · [Chapter 4: Architecture →](ARCHITECTURE.md) · [References](../research/references.bib)
 
 ---
 
 ## 1 ISA Atmosphere
+
+Source: [NOAA/NASA/USAF 1976], [Mattingly 2002 §3.2]
 
 Temperature (K):
 
@@ -27,6 +29,8 @@ M = 0.0289644 kg/mol,  R = 8.31446 J/(mol·K)
 
 ## 2 Inlet (Ram Compression)
 
+Source: [Mattingly 2002 §4.3], [Rolls-Royce 1996 §3]
+
 Total temperature and pressure at flight Mach M:
 
 ```
@@ -40,6 +44,8 @@ Inlet recovery factor: `P_1 = 0.98 · P_t`.
 
 ## 3 Compressor
 
+Source: [Walsh & Fletcher 2004 §3.4], [Mattingly 2002 §5.6]
+
 Pressure ratio and temperature rise:
 
 ```
@@ -51,12 +57,16 @@ T_2 = T_1 + (T_2s - T_1) / η_comp
 η_comp(N/N_des, h_c) = [0.87 - 0.30(s-0.88)² - 0.10(s-0.88)⁴] · (0.85 + 0.15·h_c)
 PR_comp(N/N_des, h_c) = 1 + (PR_design - 1) · q(s) · h_c
   q(s) = (1 + 8.5s²·⁵ - 2.5s⁵) / 7,  s = N/N_design
+```
 
 Compressor work:
+```
 W_c = m_dot_air · cp_air · (T_2 - T_1)
 ```
 
 ## 4 Combustor
+
+Source: [Walsh & Fletcher 2004 §4.3], [Mattingly 2002 §5.10]
 
 Combustion temperature rise from fuel energy:
 
@@ -73,6 +83,8 @@ P_3 = P_2 · (0.96 - 0.03 · (1 - health_comb))
 ```
 
 ## 5 Turbine
+
+Source: [Walsh & Fletcher 2004 §5.4], [Mattingly 2002 §5.12]
 
 Expansion work matching compressor demand:
 
@@ -94,6 +106,8 @@ P_4 = P_3 · (T_4s / T_3)^(γ_t / (γ_t - 1))
 
 ## 6 Calibrated Thrust
 
+Source: [Walsh & Fletcher 2004 §6.2], data-calibrated
+
 ```
 Thrust = k₁ · RPM · (P_4 / P_amb) + k₂ · m_dot_fuel - k₃ · V_flight + C
 ```
@@ -106,6 +120,8 @@ TSFC = m_dot_fuel / Thrust
 
 ## 7 Health Fusion
 
+Source: safety-conservative geometric mean design
+
 ```
 OverallHealth = exp(0.35·ln(H_comp) + 0.25·ln(H_comb) + 0.40·ln(H_turb))
 ```
@@ -113,6 +129,8 @@ OverallHealth = exp(0.35·ln(H_comp) + 0.25·ln(H_comb) + 0.40·ln(H_turb))
 Each component health is clipped to `[1e-8, 1]` before the log. The geometric mean ensures a single failed subsystem drives overall health to zero.
 
 ## 8 Extended Kalman Filter
+
+Source: [Thrun 2005 §3.3], [Papoulis 2002 §8]
 
 State vector: `x = [H_comp, H_comb, H_turb, H_overall]ᵀ`
 
@@ -175,6 +193,8 @@ FuelFlowRPM   = m_dot_fuel · (RPM / 100 000)
 
 ### 9.4 Physics Residuals
 
+Source: [Walsh & Fletcher 2004 §12.3], residual learning framework
+
 For each station variable S ∈ {P2, T2, P3, T3, P4, T4}:
 
 ```
@@ -184,6 +204,8 @@ Res_S = (S_measured - S_healthy) / S_healthy
 Where `S_healthy` is the Brayton-cycle prediction at the same flight condition with fully healthy components. These residuals are the key degradation signal: a healthy engine has residuals ≈ 0, while degradation causes systematic deviations.
 
 ## 10 Remaining Useful Life
+
+Source: [Box & Jenkins 1970], [Maciejowski 2002 §4]
 
 Windowed linear degradation trend:
 
@@ -207,6 +229,8 @@ RUL_90 = 1.645 · σ_res / rate
 ```
 
 ## 11 Conformal Prediction
+
+Source: [Shafer & Vovk 2008], [Angelopoulos & Bates 2023]
 
 Split conformal calibration on held-out set:
 
@@ -271,4 +295,4 @@ features: [max(θ_cal - health_t, 0), max(H - (N - t), 0) / H]
 
 ---
 
-[← Chapter 2: Theory](Theory.md) · [Chapter 4: Architecture →](ARCHITECTURE.md)
+[← Chapter 2: Theory](Theory.md) · [Chapter 4: Architecture →](ARCHITECTURE.md) · [References](../research/references.bib)

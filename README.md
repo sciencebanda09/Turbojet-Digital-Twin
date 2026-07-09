@@ -16,6 +16,16 @@ Physics-informed digital twin for four-stage turbojet health monitoring, RUL pre
 
 ---
 
+## Why This Project?
+
+Gas turbine health monitoring sits at the intersection of physics-based modelling and machine learning — two communities that rarely speak to each other. Physics models (Brayton cycle, component maps) generalise across the flight envelope but are too slow for real-time inference; pure ML models are fast but fail on off-design conditions not represented in training.
+
+This project bridges that gap with a **hybrid residual-learning architecture**: a thermodynamic baseline handles operating-condition physics, and a tree ensemble learns only the degradation residual. The result is a model that is both physically consistent and fast enough for sub-2 ms per-row inference — without sacrificing calibrated uncertainty.
+
+Beyond the code, the project is documented as a complete research narrative: theory with diagrams and citations, full equations with source attribution, comparison tables against published baselines (including NASA C-MAPSS), and a living research folder with paper template, poster, and ablation studies. The goal is a template for how applied ML projects *should* document themselves.
+
+---
+
 ## Architecture
 
 ```mermaid

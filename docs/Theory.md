@@ -1,14 +1,14 @@
 # Chapter 2: Theory
 
-[← Chapter 1: Overview](../README.md) · [Chapter 3: Equations →](Equations.md)
+[← Chapter 1: Overview](../README.md) · [Chapter 3: Equations →](Equations.md) · [References](../research/references.bib)
 
 ---
 
 ## 1 Turbojet Thermodynamics
 
-The engine is modelled as a single-spool turbojet on the Brayton cycle: four continuous processes — compression (inlet + compressor), combustion (constant-pressure heat addition), expansion (turbine + nozzle), and heat rejection to the exhaust.
+The engine is modelled as a single-spool turbojet on the Brayton cycle [Mattingly 2002, Walsh & Fletcher 2004]: four continuous processes — compression (inlet + compressor), combustion (constant-pressure heat addition), expansion (turbine + nozzle), and heat rejection to the exhaust.
 
-**Stations** follow the dataset convention:
+**Stations** follow the dataset convention [Rolls-Royce 1996]:
 
 | Station | Location |
 |---------|----------|
@@ -18,24 +18,68 @@ The engine is modelled as a single-spool turbojet on the Brayton cycle: four con
 | 3 → 4 | Turbine |
 | 4 → exit | Nozzle |
 
-Variable specific heats are used: `cp_air(T)` for compressor air and `cp_gas(T, FAR)` for combustion gas, where FAR is the fuel-air ratio.
+**T–s diagram (Brayton cycle):**
 
-**ISA Atmosphere** — temperature and pressure at altitude follow the International Standard Atmosphere lapse rate model (tropopause at 11 km, isothermal stratosphere above).
+```
+Temperature (T)
+  ^
+  |      2───3
+  |     /     \
+  |    /       \
+  |   1         4
+  |  /           \
+  | 0─────────────exit
+  +────────────────────────> Entropy (s)
+```
+
+Processes: 0→1 isentropic ram, 1→2 polytropic compression, 2→3 constant-pressure combustion, 3→4 polytropic expansion, 4→exit isentropic nozzle.
+
+Variable specific heats are used: `cp_air(T)` for compressor air and `cp_gas(T, FAR)` for combustion gas (NASA polynomial fits [Wells 1999]).
+
+**ISA Atmosphere** — temperature and pressure at altitude follow the International Standard Atmosphere lapse rate model [NOAA/NASA/USAF 1976] (tropopause at 11 km, isothermal stratosphere above).
 
 ## 2 Component Maps
 
-Component efficiencies and pressure ratio vary off-design. The maps are 4th-order polynomials of corrected speed fraction (`N / N_design`), modulated by component health:
+Component efficiencies and pressure ratio vary off-design. The maps are 4th-order polynomials of corrected speed fraction (`N / N_design`), modulated by component health [Walsh & Fletcher 2004].
 
-- **Compressor efficiency** — quadratic-quartic fit with peak 0.87 at 88% corrected speed
-- **Compressor pressure ratio** — off-design ratio scaled by health parameter
-- **Turbine efficiency** — similar quadratic-quartic fit with peak 0.90
-- **Combustor efficiency** — load-fraction dependent, > 0.99 at high power
+**Compressor efficiency vs corrected speed fraction:**
 
-Health degrades each map linearly: `eta = eta_design_polynomial · (0.85 + 0.15 · health)`.
+```
+η_comp(s)  ^
+  0.88 ─    ╱╲
+  0.86 ─   ╱  ╲
+  0.84 ─  ╱    ╲
+  0.82 ─ ╱      ╲
+  0.80 ─╱        ╲
+  0.78 ─╱          ╲
+        0.6  0.8  1.0
+          s = N/N_design
+```
+
+Peak 0.87 at s = 0.88. Polynomial: `η = 0.87 - 0.30(s-0.88)² - 0.10(s-0.88)⁴`.
+
+**Turbine efficiency vs corrected speed fraction:**
+
+```
+η_turb(s)  ^
+  0.92 ─    ╱╲
+  0.90 ─   ╱  ╲
+  0.88 ─  ╱    ╲
+  0.86 ─ ╱      ╲
+  0.84 ─╱        ╲
+        0.6  0.8  1.0
+          s = N/N_design
+```
+
+Peak 0.90 at s = 0.90. Polynomial: `η = 0.90 - 0.25(s-0.90)² - 0.08(s-0.90)⁴`.
+
+**Pressure ratio retention** — `PR(s, h) = 1 + (PR_design - 1) · q(s) · h` where `q(s)` is a normalised flow function and `h` ∈ [0, 1] is the component health [Mattingly 2002].
+
+Health degrades each map linearly: `η = η_design_polynomial · (0.85 + 0.15 · health)`.
 
 ## 3 Thrust Calibration
 
-The raw isentropic-nozzle thrust equation did not match the dataset's reported Thrust values. A calibrated momentum-thrust form replaces it:
+The raw isentropic-nozzle thrust equation did not match the dataset's reported Thrust values. A calibrated momentum-thrust form replaces it [Walsh & Fletcher 2004]:
 
 ```
 Thrust = k1 · RPM · (P4 / Pamb) + k2 · FuelFlow - k3 · V_inf + C
@@ -66,15 +110,28 @@ Weights: compressor 0.35, combustor 0.25, turbine 0.40. The geometric mean ensur
 ### 6.1 Standalone ML
 
 A `MultiOutputRegressor` pipeline wraps one estimator per target (6 targets). The pipeline is:
+
 ```
 Raw sensors → engineer_all_features() → StandardScaler → Estimator
 ```
 
-Available estimators: ExtraTrees, RandomForest, HistGradientBoosting, GradientBoosting, Stacking, XGBoost, MLP.
+Available estimators [Breiman 2001, Chen 2016, LeCun 2015]: ExtraTrees, RandomForest, HistGradientBoosting, GradientBoosting, Stacking, XGBoost, MLP.
 
-### 6.2 Hybrid Physics + ML
+### 6.2 Hybrid Physics + ML (Residual Learning)
+
+```mermaid
+flowchart LR
+    A["Sensor input\n(Altitude, Mach, RPM, ...)"] --> B["Physics model\nBrayton cycle\nhealth = 1.0"]
+    A --> C["ML model\nExtraTrees / HGBT"]
+    B --> D["Physics prediction\nhealthy-baseline"]
+    C --> E["ML residual\ndeviation from healthy"]
+    D --> F["+"]
+    E --> F
+    F --> G["Final prediction\n= physics + residual"]
+```
 
 The hybrid model splits the prediction:
+
 ```
 prediction = physics_healthy + ml_residual
 ```
@@ -95,27 +152,43 @@ Three modes, selectable at model construction:
 
 | Mode | Method | Coverage | Speed |
 |------|--------|----------|-------|
-| Conformal (default) | Split conformal, absolute residual quantiles | Marginal 90% | Fast |
-| Quantile | HistGradientBoosting quantile regression (q=0.05, 0.5, 0.95) | Conditional ~90% | Medium |
+| Conformal (default) | Split conformal, absolute residual quantiles [Shafer & Vovk 2008, Angelopoulos 2023] | Marginal 90% | Fast |
+| Quantile | HGBT quantile regression (q=0.05, 0.5, 0.95) [Koenker 2001] | Conditional ~90% | Medium |
 | Ensemble | Bootstrap (10 members) with normal CI | Approximate | Slow |
 
-**Conformal prediction** is distribution-free: it calibrates the absolute residual quantile on a held-out calibration set. Intervals are `prediction ± q_hat` where `q_hat` is the calibrated quantile.
+**Conformal prediction** is distribution-free: it calibrates the absolute residual quantile on a held-out calibration set. Intervals are `prediction ± q_hat` where `q_hat` is the calibrated quantile. Marginal coverage guarantee: `P(y ∈ [ŷ - q̂, ŷ + q̂]) ≥ 0.90` asymptotically [Shafer & Vovk 2008].
 
 ## 8 State Estimation (EKF)
 
-An Extended Kalman Filter fuses surrogate predictions over time with a monotonic degradation prior:
+An Extended Kalman Filter fuses surrogate predictions over time with a monotonic degradation prior [Thrun 2005, Papoulis 2002]:
 
-```
-Predict:  x_k|k-1 = x_k-1 - δ     (δ = 1e-4/cycle, clipped to [0, 1])
-Update:   x_k = x_k|k-1 + K · (z_k - x_k|k-1)
-Clamp:    x_k = min(x_k, x_k-1)    (monotonic non-increasing health)
+```mermaid
+flowchart TD
+    subgraph Predict["Predict step (every cycle)"]
+        P1["x_k|k-1 = clamp(x_k-1 - delta, 0, 1)\n(delta = 1e-4 / cycle)"]
+        P2["P_k|k-1 = F · P_k-1 · F^T + Q\n(Q = 1e-5 · I, F = I)"]
+    end
+    
+    subgraph Update["Update step (on sensor obs.)"]
+        U1["y = z_k - x_k|k-1\n(innovation)"]
+        U2["K = P · H^T · (H·P·H^T + R)^-1\n(Kalman gain, R = 0.01·I, H = I)"]
+        U3["x_k = x_k|k-1 + K · y\n(state update)"]
+        U4["P_k = (I - K·H) · P · (I - K·H)^T\n+ K·R·K^T\n(Joseph form)"]
+    end
+    
+    subgraph Clamp["Monotonicity enforcement"]
+        C1["IF x_k[i] > x_k-1[i]:\n  x_k[i] = x_k-1[i]\n  P_k[i,:] = 0\n  P_k[i,i] = Q[i,i]"]
+    end
+    
+    P1 --> P2 --> U1 --> U2 --> U3 --> U4 --> C1
+    C1 --> P1
 ```
 
 The process noise is `1e-5`, measurement noise `0.01`. The monotonicity clamp rejects any observation that would imply a health increase (e.g., sensor noise or model over-prediction) and resets the corresponding covariance to process-noise level.
 
 ## 9 Remaining Useful Life
 
-RUL is estimated by linear extrapolation of the recent degradation trend:
+RUL is estimated by linear extrapolation of the recent degradation trend [Box & Jenkins 1970, Maciejowski 2002]:
 
 ```
 slope = polyfit(cycles[-50:], health[-50:], deg=1)
@@ -152,8 +225,25 @@ A rule-based decision engine maps health, RUL, and failure probability to action
 Two explanation methods rank the factors behind a health change:
 
 - **Physics-sensitivity** — for what-if scenarios: signed contribution = `weight · relative_change(input)` for FuelFlow, RPM, Tamb, Pamb, compressor/turbine efficiency
-- **SHAP** — for ML model predictions: TreeExplainer (when `shap` is available) with permutation-importance fallback
+- **SHAP** — for ML model predictions: TreeExplainer [Lundberg 2020] (when `shap` is available) with permutation-importance fallback
+
+## References
+
+Key works cited throughout this chapter. Full bibliography in `research/references.bib`.
+
+| Work | Citation |
+|------|----------|
+| Aircraft Engine Design | Mattingly, Heiser & Pratt 2002 |
+| Gas Turbine Performance | Walsh & Fletcher 2004 |
+| The Jet Engine | Rolls-Royce plc 1996 |
+| Probabilistic Robotics | Thrun, Burgard & Fox 2005 |
+| Conformal Prediction | Shafer & Vovk 2008; Angelopoulos & Bates 2023 |
+| Quantile Regression | Koenker & Hallock 2001 |
+| Random Forests | Breiman 2001 |
+| XGBoost | Chen & Guestrin 2016 |
+| U.S. Standard Atmosphere | NOAA/NASA/USAF 1976 |
+| Time Series Analysis | Box & Jenkins 1970 |
 
 ---
 
-[← Chapter 1: Overview](../README.md) · [Chapter 3: Equations →](Equations.md)
+[← Chapter 1: Overview](../README.md) · [Chapter 3: Equations →](Equations.md) · [References](../research/references.bib)
