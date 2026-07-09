@@ -12,7 +12,7 @@ import os
 from src.dataset.loader import TARGETS, load_dataset
 from src.dataset.split import official_split
 from src.surrogate.hybrid import HybridPhysicsMLModel
-from src.surrogate.train import create_model
+from src.surrogate.train import PIPELINE_FEATURES, create_model
 
 
 @dataclass
@@ -101,7 +101,7 @@ def run_benchmark_suite(
         total_s = perf_counter() - t0
         throughput = (50 * 100) / total_s
 
-        n_features = len(train.columns) - len(TARGETS)
+        n_features = len(PIPELINE_FEATURES)
         n_targets = len(TARGETS)
 
         br = BenchmarkResult(

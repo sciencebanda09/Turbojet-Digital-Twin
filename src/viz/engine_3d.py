@@ -7,11 +7,12 @@ from typing import Any
 import numpy as np
 import pyvista as pv
 import yaml
+from src.utils.paths import ROOT
 
-BASE_MESH_DIR = Path("models/engine_meshes")
+BASE_MESH_DIR = ROOT / "models" / "engine_meshes"
 TEMPLATE_DIR = Path(__file__).parent
-SENSOR_CONFIG = Path("configs/sensor_positions.yaml")
-VIZ_CONFIG = Path("configs/viz_config.yaml")
+SENSOR_CONFIG = ROOT / "configs" / "sensor_positions.yaml"
+VIZ_CONFIG = ROOT / "configs" / "viz_config.yaml"
 STAGE_ORDER = ["casing", "compressor", "combustor", "turbine"]
 
 

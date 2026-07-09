@@ -190,7 +190,7 @@ class SurrogateModel:
         )
 
     def explain(self, frame: pd.DataFrame) -> dict[str, Any]:
-        """Feature importance and per-prediction explanation."""
+        """Feature importance and per-prediction explanation (first row only)."""
         explained: dict[str, Any] = {"method": "feature_importances"}
         if self._feature_importances_ is not None:
             names = self.pipeline_feature_names
@@ -204,9 +204,10 @@ class SurrogateModel:
             prepared = self._prepare(frame)
             from sklearn.neighbors import NearestNeighbors
 
-            nn = NearestNeighbors(n_neighbors=5, metric="euclidean")
+            k = min(5, len(self._calibration_features_))
+            nn = NearestNeighbors(n_neighbors=k, metric="euclidean")
             nn.fit(self._calibration_features_)
-            dists, idxs = nn.kneighbors(prepared.values[:1])
+            dists, _ = nn.kneighbors(prepared.values[:1])
             explained["nearest_calibration"] = {
                 "mean_distance": float(dists.mean()),
                 "n_calibration_points": len(self._calibration_features_),

@@ -35,17 +35,20 @@ def train_from_csv(
         raise ValueError(f"Unsupported split strategy: {strategy}")
     frame = load_dataset(data_path)
     train, test = _STRATEGIES[strategy](frame, seed=seed)
+    # Hold out half of test for conformal calibration to avoid data leak
+    calibration = test.iloc[: len(test) // 2]
+    heldout = test.iloc[len(test) // 2 :]
     if kind == "hybrid":
         model: Any = HybridPhysicsMLModel.train(train, ml_kind="hist_gradient_boosting", seed=seed)
-        prediction = model.predict(test)
+        prediction = model.predict(heldout)
     else:
         model = create_model(kind, seed=seed, n_estimators=n_estimators).fit(train)
-        prediction = model.predict(test)
-    metrics = regression_metrics(test[TARGETS].to_numpy(), prediction.to_numpy())
+        prediction = model.predict(heldout)
+    metrics = regression_metrics(heldout[TARGETS].to_numpy(), prediction.to_numpy())
     if kind == "hybrid":
         model.save(output_path)
     else:
-        model.calibrate(test)
+        model.calibrate(calibration)
         model.save(output_path)
     metrics_path = Path(output_path).with_suffix(".metrics.json")
     metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")

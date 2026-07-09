@@ -44,10 +44,11 @@ def estimate_rul(
     if len(x) != len(y) or len(x) < 2:
         raise ValueError("at least two aligned observations are required")
     window = min(len(x), 50)
-    slope, _ = np.polyfit(x[-window:], y[-window:], 1)
+    coeffs = np.polyfit(x[-window:], y[-window:], 1)
+    slope = coeffs[0]
     rate = max(-float(slope), 1e-6)
     remaining = max((float(y[-1]) - threshold) / rate, 0.0)
-    residual = y[-window:] - np.polyval(np.polyfit(x[-window:], y[-window:], 1), x[-window:])
+    residual = y[-window:] - np.polyval(coeffs, x[-window:])
     uncertainty = 1.645 * float(np.std(residual)) / rate
     return RULResult(
         remaining,

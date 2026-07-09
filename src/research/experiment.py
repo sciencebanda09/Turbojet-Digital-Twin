@@ -44,12 +44,16 @@ def run_experiment(
     split_fn = official_split if split_strategy == "official" else grouped_split
     train, test = split_fn(frame, seed=seed)
 
+    # Hold out half of test for conformal calibration to avoid data leak
+    calibration = test.iloc[: len(test) // 2]
+    heldout = test.iloc[len(test) // 2 :]
+
     model = create_model(kind, seed=seed, n_estimators=n_estimators, scale_targets=scale_targets)
     model.fit(train)
-    model.calibrate(test)
+    model.calibrate(calibration)
 
-    prediction = model.predict(test)
-    metrics = regression_metrics(test[TARGETS].to_numpy(), prediction.to_numpy())
+    prediction = model.predict(heldout)
+    metrics = regression_metrics(heldout[TARGETS].to_numpy(), prediction.to_numpy())
 
     exp_id = f"{kind}_{split_strategy}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     model_path = output_dir / f"{exp_id}.joblib"
@@ -93,7 +97,6 @@ def ablation_study(
         ("extra_trees", "grouped", True),
         ("hist_gradient_boosting", "grouped", True),
         ("extra_trees", "official", False),
-        ("extra_trees", "official", True),
     ]
     for kind, strategy, scale in variants:
         try:

@@ -142,6 +142,11 @@ class DigitalTwin:
         )
         state = self.estimator.update(raw)
         state[3] = overall_health(*state[:3])
+        # State[3] is now deterministically derived from state[:3] — adjust
+        # covariance so its variance reflects the component uncertainties.
+        cov = self.estimator.filter.covariance
+        cov[3, 3] = np.max(np.diag(cov)[:3])
+        cov[3, :3] = cov[:3, 3] = 0.0
         self.estimator.filter.state = state.copy()
         return dict(
             zip(
@@ -280,4 +285,7 @@ class DigitalTwin:
                     )
                 ]
             )
+            # Scale covariance by history length - longer histories have more certainty
+            n = len(self.history)
+            self.estimator.filter.covariance = np.eye(4) * (0.02 / max(n, 1))
         return self

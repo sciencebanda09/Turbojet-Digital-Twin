@@ -147,7 +147,7 @@ class FaultInjector:
             [
                 FaultSpec(
                     fault_type=FaultType(item["fault_type"]),
-                    severity=float(item.get("severity", 0.5)),
+                    severity=float(item["severity"]) if item.get("severity") is not None else 0.5,
                     target_sensor=item.get("target_sensor"),
                     onset_cycle=item.get("onset_cycle"),
                 )

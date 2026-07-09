@@ -25,8 +25,10 @@ import numpy as np
 import pyvista as pv
 import yaml
 
-CONFIG_DIR = Path("configs/cad_models")
-BASE_OUT_DIR = Path("models/engine_meshes")
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent
+CONFIG_DIR = _PROJECT_ROOT / "configs" / "cad_models"
+BASE_OUT_DIR = _PROJECT_ROOT / "models" / "engine_meshes"
 
 
 # ── helpers ──────────────────────────────────────────────────────────

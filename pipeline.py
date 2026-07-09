@@ -104,8 +104,11 @@ def main() -> None:
     elif args.command == "tune":
         frame = load_dataset(args.data)
         train, test = official_split(frame, seed=42)
-        model, config = select_model(train, test)
-        model.calibrate(test)
+        # Hold out half of test for conformal calibration — model selection on the other half
+        calibration = test.iloc[: len(test) // 2]
+        heldout = test.iloc[len(test) // 2 :]
+        model, config = select_model(train, heldout)
+        model.calibrate(calibration)
         model.save(args.output)
         config_path = Path(args.output).with_suffix(".config.json")
         config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")

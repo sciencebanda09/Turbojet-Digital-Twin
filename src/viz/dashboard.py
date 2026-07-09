@@ -17,6 +17,7 @@ from src.simulation.what_if import ScenarioAdjustment, simulate_scenario
 from src.viz.engine_animation import engine_schematic
 from src.viz.engine_3d import load_engine_meshes, build_interactive_html, render_static_image
 from src.viz.engine_3d import _load_sensor_config, _load_viz_config, _health_key
+from src.utils.paths import ROOT
 from src.viz.plots import (
     calibration_plot,
     correlation_heatmap,
@@ -897,7 +898,7 @@ try:
             )
         available_models = sorted(
             d.name
-            for d in (Path("models/engine_meshes").iterdir())
+            for d in (ROOT.joinpath("models", "engine_meshes").iterdir())
             if d.is_dir() and not d.name.startswith("_")
         )
         selected = st.selectbox(

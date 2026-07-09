@@ -1,7 +1,6 @@
 """FastAPI service for real-time and batch engine inference."""
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 import logging
 import numpy as np
@@ -13,6 +12,7 @@ from pydantic import BaseModel, Field
 from src.digital_twin.engine import DigitalTwin
 from src.explainability.root_cause import analyze_scenario
 from src.explainability.shap_explainer import explain_prediction
+from src.utils.paths import MODELS
 from src.faults.injection import FaultInjector, FaultSpec, FaultType
 from src.maintenance.recommendation import recommend
 from src.simulation.what_if import ScenarioAdjustment, simulate_scenario
@@ -74,7 +74,7 @@ twins: dict[str, DigitalTwin] = {}
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Optionally load the default model at application startup."""
-    model_path = Path("models/best_model.joblib")
+    model_path = MODELS / "best_model.joblib"
     twin = DigitalTwin()
     if model_path.exists():
         twin.load_model(model_path)
